@@ -61,7 +61,7 @@ body {
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<p class="title-glow">⚡ AI Bias Terminal (Neon)</p>', unsafe_allow_html=True)
+st.markdown('<p class="title-glow">⚡ AI Bias Terminal </p>', unsafe_allow_html=True)
 
 # ---------------- LIVE SESSION DETECTION ----------------
 def get_live_session():
