@@ -5,11 +5,12 @@ import joblib
 import yfinance as yf
 import ta
 from datetime import datetime
+import pytz
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="AI Neon Bias Dashboard", layout="wide")
 
-# ---------------- NEON CSS (🔥 UI UPGRADE) ----------------
+# ---------------- NEON CSS ----------------
 st.markdown("""
 <style>
 body {
@@ -27,21 +28,28 @@ body {
 .bullish {
     color: #00ff9f;
     font-size: 36px;
-    text-shadow: 0 0 10px #00ff9f, 0 0 20px #00ff9f;
+    text-shadow: 0 0 12px #00ff9f, 0 0 25px #00ff9f;
 }
 .bearish {
     color: #ff4d4d;
     font-size: 36px;
-    text-shadow: 0 0 10px #ff4d4d, 0 0 20px #ff4d4d;
+    text-shadow: 0 0 12px #ff4d4d, 0 0 25px #ff4d4d;
 }
 .neutral {
     color: #ffd700;
     font-size: 36px;
-    text-shadow: 0 0 10px #ffd700, 0 0 20px #ffd700;
+    text-shadow: 0 0 12px #ffd700, 0 0 25px #ffd700;
+}
+.session {
+    font-size: 22px;
+    text-align: center;
+    color: #00eaff;
+    text-shadow: 0 0 10px #00eaff;
+    margin-top: 10px;
 }
 .message {
     font-size: 18px;
-    margin-top: 10px;
+    margin-top: 12px;
     color: #cbd5e1;
 }
 .title-glow {
@@ -53,8 +61,27 @@ body {
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<p class="title-glow">⚡ AI Daily Bias Terminal (Neon Edition)</p>', unsafe_allow_html=True)
-st.caption("Auto Macro + Regime Bias | Gold & USDJPY")
+st.markdown('<p class="title-glow">⚡ AI Bias Terminal (Neon)</p>', unsafe_allow_html=True)
+
+# ---------------- LIVE SESSION DETECTION ----------------
+def get_live_session():
+    ist = pytz.timezone("Asia/Kolkata")
+    now = datetime.now(ist)
+    hour = now.hour
+    minute = now.minute
+    current_time = hour + minute/60
+
+    if 5.5 <= current_time < 12.5:
+        return "Asian Session 🟢 (Range / Slow)"
+    elif 12.5 <= current_time < 17.5:
+        return "London Session 🔥 (High Volatility)"
+    elif 17.5 <= current_time < 23.5:
+        return "New York Session 🚀 (Strong Moves)"
+    else:
+        return "Off Market 🌙 (Low Liquidity)"
+
+session = get_live_session()
+st.markdown(f'<div class="session">🕒 Live Market Session: {session}</div>', unsafe_allow_html=True)
 
 # ---------------- LOAD MODELS ----------------
 @st.cache_resource
@@ -62,7 +89,6 @@ def load_models():
     gold_model = joblib.load("gold_daily_bias_xgb.pkl")
     jpy_model = joblib.load("usdjpy_daily_bias_xgb.pkl")
     return gold_model, jpy_model
-
 
 # ---------------- FETCH DATA ----------------
 @st.cache_data(ttl=3600)
@@ -91,7 +117,6 @@ def fetch_all_data(ticker):
 
     asset.dropna(inplace=True)
     return asset
-
 
 # ---------------- FEATURE ENGINEERING (MATCH TRAINING) ----------------
 def create_features(df):
@@ -138,26 +163,28 @@ def create_features(df):
     latest = df[features].iloc[-1]
     return latest.values.reshape(1, -1)
 
-
-# ---------------- BIAS + MESSAGE LOGIC ----------------
+# ---------------- BIAS + TRADER MESSAGE ----------------
 def get_bias_and_message(model, X):
     prob = model.predict_proba(X)[0][1]
 
     if prob > 0.6:
-        bias = "Bullish"
-        css_class = "bullish"
-        message = "📈 Bias is Bullish — Look for BUY entries near M15 demand/support levels."
+        return (
+            "Bullish 🟢",
+            "bullish",
+            "📈 Bias Bullish → Look for BUY entries near M15 demand/support zones."
+        )
     elif prob < 0.4:
-        bias = "Bearish"
-        css_class = "bearish"
-        message = "📉 Bias is Bearish — Look for SELL entries near M15 supply/resistance levels."
+        return (
+            "Bearish 🔴",
+            "bearish",
+            "📉 Bias Bearish → Look for SELL entries near M15 supply/resistance zones."
+        )
     else:
-        bias = "Neutral"
-        css_class = "neutral"
-        message = "⚠️ Neutral Bias — Wait for clear market structure before trading."
-
-    return bias, css_class, message
-
+        return (
+            "Neutral 🟡",
+            "neutral",
+            "⚠️ Neutral Bias → Wait for clear structure before entering trades."
+        )
 
 # ---------------- MAIN ----------------
 try:
@@ -193,7 +220,7 @@ try:
         """, unsafe_allow_html=True)
 
     st.markdown("---")
-    st.write(f"🕒 Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    st.write("🕒 Last Updated:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 except Exception as e:
     st.error(f"❌ Error loading data or model: {e}")
