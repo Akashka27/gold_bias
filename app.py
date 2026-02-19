@@ -32,7 +32,7 @@ def fetch_market_data():
 # ---------------- FEATURE ENGINEERING ----------------
 def create_features(df):
     df = df.copy()
-    
+
     df["rsi"] = ta.momentum.RSIIndicator(df["Close"], window=14).rsi()
     df["ema20"] = ta.trend.EMAIndicator(df["Close"], window=20).ema_indicator()
     df["ema50"] = ta.trend.EMAIndicator(df["Close"], window=50).ema_indicator()
@@ -41,10 +41,22 @@ def create_features(df):
     ).average_true_range()
 
     df = df.dropna()
-    return df.tail(1)  # latest row only (daily bias)
+
+    # Take only last row and REMOVE index
+    latest = df[["rsi", "ema20", "ema50", "atr"]].iloc[-1]
+
+    # Convert to proper shape (1, n_features)
+    return latest.values.reshape(1, -1)
 
 # ---------------- BIAS FUNCTION ----------------
 def get_bias(model, features):
+    # Ensure features are 2D row (1, n_features)
+    if isinstance(features, pd.DataFrame):
+        features = features.values
+
+    # Fix shape issue (important)
+    features = features.reshape(1, -1)
+
     prob = model.predict_proba(features)[0]
     confidence = round(np.max(prob) * 100, 2)
 
@@ -56,6 +68,7 @@ def get_bias(model, features):
         bias = "Neutral 🟡"
 
     return bias, confidence
+
 
 # ---------------- MAIN LOGIC ----------------
 try:
