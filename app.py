@@ -8,7 +8,7 @@ from datetime import datetime
 import pytz
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(page_title="AI  Bias Dashboard", layout="wide")
+st.set_page_config(page_title="AI Neon Bias Dashboard", layout="wide")
 
 # ---------------- NEON CSS ----------------
 st.markdown("""
@@ -61,7 +61,7 @@ body {
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<p class="title-glow">⚡ AI Bias Terminal </p>', unsafe_allow_html=True)
+st.markdown('<p class="title-glow">⚡ AI Bias Terminal (Neon)</p>', unsafe_allow_html=True)
 
 # ---------------- LIVE SESSION DETECTION ----------------
 def get_live_session():
@@ -171,13 +171,13 @@ def get_bias_and_message(model, X):
         return (
             "Bullish 🟢",
             "bullish",
-            "📈 Bias Bullish → Look for BUY entries near M15 Levels."
+            "📈 Bias Bullish → Look for BUY entries near M15 demand/support zones."
         )
     elif prob < 0.4:
         return (
             "Bearish 🔴",
             "bearish",
-            "📉 Bias Bearish → Look for SELL entries near M15 Levels."
+            "📉 Bias Bearish → Look for SELL entries near M15 supply/resistance zones."
         )
     else:
         return (
@@ -220,7 +220,7 @@ try:
         """, unsafe_allow_html=True)
 
     st.markdown("---")
- 
+    st.write("🕒 Last Updated:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 except Exception as e:
     st.error(f"❌ Error loading data or model: {e}")
