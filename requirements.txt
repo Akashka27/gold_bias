@@ -2,7 +2,6 @@ streamlit
 pandas
 numpy
 joblib
+yfinance
 scikit-learn
 xgboost
-yfinance
-ta
