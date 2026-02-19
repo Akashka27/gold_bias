@@ -14,112 +14,105 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ---------------- BACKGROUND VIDEO + NEON UI ----------------
-video_url = "https://cdn.coverr.co/videos/coverr-stock-market-5176/1080p.mp4"
+# ---------------- ANIMATED NEON GRADIENT BACKGROUND ----------------
+st.markdown("""
+<style>
+/* Animated Neon Gradient Background */
+body {
+    background: linear-gradient(-45deg, #020617, #020617, #020617, #00111a);
+    background-size: 400% 400%;
+    animation: gradientBG 15s ease infinite;
+}
 
-st.markdown(
-    f"""
-    <style>
-    /* Remove default padding */
-    .block-container {{
-        padding-top: 1rem;
-        padding-bottom: 0rem;
-        max-width: 1200px;
-    }}
+@keyframes gradientBG {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
 
-    /* Fullscreen Video Background */
-    #bg-video {{
-        position: fixed;
-        right: 0;
-        bottom: 0;
-        min-width: 100%;
-        min-height: 100%;
-        object-fit: cover;
-        z-index: -2;
-        filter: brightness(0.25) blur(2px);
-    }}
+/* Remove top spacing */
+.block-container {
+    padding-top: 1.2rem;
+    max-width: 1200px;
+}
 
-    /* Dark overlay */
-    .overlay {{
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(5, 10, 25, 0.78);
-        z-index: -1;
-    }}
+/* Neon Title */
+.neon-title {
+    text-align: center;
+    font-size: 46px;
+    font-weight: bold;
+    color: #00f7ff;
+    text-shadow:
+        0 0 10px #00f7ff,
+        0 0 25px #00f7ff,
+        0 0 50px #00f7ff;
+    margin-bottom: 5px;
+}
 
-    /* Neon Title */
-    .neon-title {{
-        text-align: center;
-        font-size: 44px;
-        font-weight: bold;
-        color: #00f7ff;
-        text-shadow:
-            0 0 10px #00f7ff,
-            0 0 25px #00f7ff,
-            0 0 45px #00f7ff;
-        margin-bottom: 5px;
-    }}
+/* Subtitle */
+.subtitle {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 16px;
+    margin-bottom: 25px;
+}
 
-    /* Subtitle */
-    .subtitle {{
-        text-align: center;
-        color: #cbd5f5;
-        font-size: 16px;
-        margin-bottom: 25px;
-    }}
+/* Glass Cards */
+.glass-card {
+    background: rgba(15, 23, 42, 0.55);
+    padding: 25px;
+    border-radius: 18px;
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(0,255,255,0.15);
+    box-shadow: 0 0 25px rgba(0,255,255,0.10);
+    transition: 0.3s ease-in-out;
+}
 
-    /* Glass Cards */
-    .glass-card {{
-        background: rgba(15, 23, 42, 0.75);
-        padding: 25px;
-        border-radius: 18px;
-        backdrop-filter: blur(12px);
-        border: 1px solid rgba(0,255,255,0.15);
-        box-shadow: 0 0 25px rgba(0,255,255,0.12);
-        margin-top: 20px;
-    }}
+/* Hover Glow Effect */
+.glass-card:hover {
+    box-shadow: 0 0 35px rgba(0,255,255,0.25);
+    transform: translateY(-2px);
+}
 
-    /* Bias Styles */
-    .bullish {{
-        color: #00ff9f;
-        font-size: 28px;
-        font-weight: bold;
-        text-shadow: 0 0 12px #00ff9f;
-    }}
+/* Bias Styles */
+.bullish {
+    color: #00ff9f;
+    font-size: 28px;
+    font-weight: bold;
+    text-shadow: 0 0 12px #00ff9f;
+}
 
-    .bearish {{
-        color: #ff4d4d;
-        font-size: 28px;
-        font-weight: bold;
-        text-shadow: 0 0 12px #ff4d4d;
-    }}
+.bearish {
+    color: #ff4d4d;
+    font-size: 28px;
+    font-weight: bold;
+    text-shadow: 0 0 12px #ff4d4d;
+}
 
-    .neutral {{
-        color: #ffd700;
-        font-size: 28px;
-        font-weight: bold;
-        text-shadow: 0 0 12px #ffd700;
-    }}
+.neutral {
+    color: #ffd700;
+    font-size: 28px;
+    font-weight: bold;
+    text-shadow: 0 0 12px #ffd700;
+}
 
-    /* Info Boxes */
-    .info-box {{
-        font-size: 16px;
-        margin-top: 10px;
-        color: #e2e8f0;
-    }}
-    </style>
+/* Info text */
+.info-text {
+    font-size: 16px;
+    color: #e2e8f0;
+    margin-top: 8px;
+}
 
-    <video autoplay muted loop id="bg-video">
-        <source src="{video_url}" type="video/mp4">
-    </video>
-
-    <div class="overlay"></div>
-    """,
-    unsafe_allow_html=True
-)
+/* Section Title Glow */
+.section-title {
+    font-size: 28px;
+    font-weight: bold;
+    color: #38bdf8;
+    text-shadow: 0 0 12px rgba(56,189,248,0.7);
+    margin-top: 10px;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ---------------- HEADER ----------------
 st.markdown(
@@ -154,7 +147,6 @@ def get_session_and_killzone():
 
 session, killzone = get_session_and_killzone()
 
-# Session Display
 col_s1, col_s2 = st.columns(2)
 with col_s1:
     st.info(f"🕒 Live Session: {session}")
@@ -168,7 +160,7 @@ def load_models():
     jpy_model = joblib.load("usdjpy_daily_bias_xgb.pkl")
     return gold_model, jpy_model
 
-# ---------------- FETCH DATA (MATCHES TRAINING SCRIPT) ----------------
+# ---------------- FETCH DATA (MATCH TRAINING SCRIPT) ----------------
 @st.cache_data(ttl=3600)
 def fetch_data(ticker):
     asset = yf.download(ticker, period="5y", interval="1d", progress=False)
@@ -179,7 +171,6 @@ def fetch_data(ticker):
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
-    # Merge macro drivers (IDENTICAL to training)
     asset = asset.merge(
         dxy[["Close"]].rename(columns={"Close": "DXY"}),
         left_index=True,
@@ -197,7 +188,7 @@ def fetch_data(ticker):
     asset.dropna(inplace=True)
     return asset
 
-# ---------------- FEATURE ENGINEERING (IDENTICAL TO YOUR TRAINING) ----------------
+# ---------------- FEATURE ENGINEERING (IDENTICAL TO TRAINING) ----------------
 def create_features(df):
     df = df.copy()
 
@@ -240,17 +231,17 @@ def create_features(df):
     ]
 
     latest = df[features].iloc[-1]
-    return latest.values.reshape(1, -1), df.iloc[-1]
+    return latest.values.reshape(1, -1)
 
-# ---------------- M15 EXECUTION PLAN ----------------
+# ---------------- EXECUTION PLAN ENGINE ----------------
 def generate_execution_plan(prob, session_name):
     if prob > 0.6:
         bias = '<span class="bullish">Bullish 🟢</span>'
-        execution = "Look for M15 BUY pullbacks into demand/support zones."
+        execution = "Focus on M15 BUY pullbacks into demand/support zones."
         avoid = "Avoid counter-trend shorts unless structure breaks."
     elif prob < 0.4:
         bias = '<span class="bearish">Bearish 🔴</span>'
-        execution = "Look for M15 SELL pullbacks into supply/resistance zones."
+        execution = "Focus on M15 SELL pullbacks into supply/resistance zones."
         avoid = "Avoid counter-trend buys unless structure shifts."
     else:
         bias = '<span class="neutral">Neutral 🟡</span>'
@@ -258,7 +249,7 @@ def generate_execution_plan(prob, session_name):
         avoid = "Avoid trading in chop or low volatility."
 
     if "Asian" in session_name:
-        timing = "Low volatility. Best to wait for London Kill Zone."
+        timing = "Low volatility session. Best to wait for London Kill Zone."
     elif "London" in session_name:
         timing = "High probability session for M15 setups."
     elif "New York" in session_name:
@@ -275,8 +266,8 @@ try:
     gold_df = fetch_data("GC=F")
     jpy_df = fetch_data("JPY=X")
 
-    gold_X, gold_latest = create_features(gold_df)
-    jpy_X, jpy_latest = create_features(jpy_df)
+    gold_X = create_features(gold_df)
+    jpy_X = create_features(jpy_df)
 
     gold_prob = gold_model.predict_proba(gold_X)[0][1]
     jpy_prob = jpy_model.predict_proba(jpy_X)[0][1]
@@ -288,7 +279,7 @@ try:
         jpy_prob, session
     )
 
-    st.markdown("## 🎯 M15 Execution Decision Panel")
+    st.markdown('<div class="section-title">🎯 M15 Execution Decision Panel</div>', unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
 
@@ -296,18 +287,18 @@ try:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.subheader("🟡 XAUUSD (Gold)")
         st.markdown(f"**AI Bias:** {gold_bias}", unsafe_allow_html=True)
-        st.markdown(f"<div class='info-box'><b>Execution Plan:</b> {gold_exec}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='info-box'><b>Avoid:</b> {gold_avoid}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='info-box'><b>Session Guidance:</b> {gold_timing}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='info-text'><b>Execution Plan:</b> {gold_exec}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='info-text'><b>Avoid:</b> {gold_avoid}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='info-text'><b>Session Guidance:</b> {gold_timing}</div>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col2:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.subheader("💴 USDJPY")
         st.markdown(f"**AI Bias:** {jpy_bias}", unsafe_allow_html=True)
-        st.markdown(f"<div class='info-box'><b>Execution Plan:</b> {jpy_exec}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='info-box'><b>Avoid:</b> {jpy_avoid}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='info-box'><b>Session Guidance:</b> {jpy_timing}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='info-text'><b>Execution Plan:</b> {jpy_exec}</div>", unsafe_allow_html=True)
+        st.markdown(f_togglef"<div class='info-text'><b>Avoid:</b> {jpy_avoid}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='info-text'><b>Session Guidance:</b> {jpy_timing}</div>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
