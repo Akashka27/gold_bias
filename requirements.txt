@@ -6,3 +6,4 @@ yfinance
 ta
 scikit-learn
 xgboost
+pytz
