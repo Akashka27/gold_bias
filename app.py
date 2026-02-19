@@ -220,7 +220,6 @@ try:
         """, unsafe_allow_html=True)
 
     st.markdown("---")
-    st.write("🕒 Last Updated:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-
+    
 except Exception as e:
     st.error(f"❌ Error loading data or model: {e}")
