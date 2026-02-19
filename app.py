@@ -14,8 +14,8 @@ st.caption("⏰ Auto updates daily using live market data")
 # ---------------- LOAD MODELS ----------------
 @st.cache_resource
 def load_models():
-    gold_model = joblib.load("models/xgb_gold.pkl")
-    jpy_model = joblib.load("models/xgb_usdjpy.pkl")
+    gold_model = joblib.load("gold_daily_bias_xgb.pkl")
+    jpy_model = joblib.load("usdjpy_daily_bias_xgb.pkl")
     return gold_model, jpy_model
 
 # ---------------- FETCH DATA ----------------
