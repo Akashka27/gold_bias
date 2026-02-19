@@ -171,13 +171,13 @@ def get_bias_and_message(model, X):
         return (
             "Bullish 🟢",
             "bullish",
-            "📈 Bias Bullish → Look for BUY entries near M15 demand/support zones."
+            "📈 Bias Bullish → Look for BUY entries near M15 Levels."
         )
     elif prob < 0.4:
         return (
             "Bearish 🔴",
             "bearish",
-            "📉 Bias Bearish → Look for SELL entries near M15 supply/resistance zones."
+            "📉 Bias Bearish → Look for SELL entries near M15 Levels."
         )
     else:
         return (
