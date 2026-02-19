@@ -8,7 +8,7 @@ from datetime import datetime
 import pytz
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(page_title="AI Neon Bias Dashboard", layout="wide")
+st.set_page_config(page_title="AI Bias Terminal PRO", layout="wide")
 
 # ---------------- NEON CSS ----------------
 st.markdown("""
@@ -16,72 +16,87 @@ st.markdown("""
 body {
     background-color: #0e1117;
 }
+.title {
+    font-size: 44px;
+    text-align: center;
+    color: #00eaff;
+    text-shadow: 0 0 20px #00eaff, 0 0 40px #00eaff;
+}
 .neon-card {
     border-radius: 18px;
     padding: 30px;
     margin: 20px 0;
     text-align: center;
-    font-weight: bold;
-    box-shadow: 0 0 25px rgba(0,255,255,0.2);
     background: #111827;
+    box-shadow: 0 0 25px rgba(0,255,255,0.15);
 }
 .bullish {
     color: #00ff9f;
-    font-size: 36px;
-    text-shadow: 0 0 12px #00ff9f, 0 0 25px #00ff9f;
+    font-size: 38px;
+    text-shadow: 0 0 15px #00ff9f;
 }
 .bearish {
     color: #ff4d4d;
-    font-size: 36px;
-    text-shadow: 0 0 12px #ff4d4d, 0 0 25px #ff4d4d;
+    font-size: 38px;
+    text-shadow: 0 0 15px #ff4d4d;
 }
 .neutral {
     color: #ffd700;
-    font-size: 36px;
-    text-shadow: 0 0 12px #ffd700, 0 0 25px #ffd700;
+    font-size: 38px;
+    text-shadow: 0 0 15px #ffd700;
 }
 .session {
     font-size: 22px;
     text-align: center;
     color: #00eaff;
     text-shadow: 0 0 10px #00eaff;
-    margin-top: 10px;
+}
+.killzone {
+    font-size: 24px;
+    text-align: center;
+    color: #ff00ff;
+    text-shadow: 0 0 15px #ff00ff;
 }
 .message {
     font-size: 18px;
     margin-top: 12px;
     color: #cbd5e1;
 }
-.title-glow {
-    font-size: 42px;
-    text-align: center;
+.gauge-title {
+    font-size: 20px;
     color: #00eaff;
-    text-shadow: 0 0 15px #00eaff, 0 0 30px #00eaff;
+    text-align: center;
+    margin-top: 10px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<p class="title-glow">⚡ AI Bias Terminal (Neon)</p>', unsafe_allow_html=True)
+st.markdown('<p class="title">⚡ AI Institutional Bias Terminal</p>', unsafe_allow_html=True)
 
-# ---------------- LIVE SESSION DETECTION ----------------
-def get_live_session():
+# ---------------- TIME + SESSION ----------------
+def get_ist_time():
     ist = pytz.timezone("Asia/Kolkata")
-    now = datetime.now(ist)
-    hour = now.hour
-    minute = now.minute
-    current_time = hour + minute/60
+    return datetime.now(ist)
 
-    if 5.5 <= current_time < 12.5:
-        return "Asian Session 🟢 (Range / Slow)"
-    elif 12.5 <= current_time < 17.5:
-        return "London Session 🔥 (High Volatility)"
-    elif 17.5 <= current_time < 23.5:
-        return "New York Session 🚀 (Strong Moves)"
+def get_session_and_killzone():
+    now = get_ist_time()
+    hour = now.hour + now.minute/60
+
+    if 5.5 <= hour < 12.5:
+        return "Asian Session 🟢", "🟢 Asian Range (Low Volatility)"
+    elif 12.5 <= hour < 15.5:
+        return "London Session 🔥", "🎯 LONDON KILL ZONE (Best for Gold)"
+    elif 15.5 <= hour < 18.5:
+        return "London Continuation ⚡", "⚡ Momentum Window"
+    elif 18.5 <= hour < 21.5:
+        return "New York Session 🚀", "🎯 NEW YORK KILL ZONE (Reversals)"
     else:
-        return "Off Market 🌙 (Low Liquidity)"
+        return "Off Market 🌙", "💤 Dead Zone (Low Liquidity)"
 
-session = get_live_session()
-st.markdown(f'<div class="session">🕒 Live Market Session: {session}</div>', unsafe_allow_html=True)
+session, killzone = get_session_and_killzone()
+
+st.markdown(f'<div class="session">🕒 Live Session: {session}</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="killzone">{killzone}</div>', unsafe_allow_html=True)
 
 # ---------------- LOAD MODELS ----------------
 @st.cache_resource
@@ -92,7 +107,7 @@ def load_models():
 
 # ---------------- FETCH DATA ----------------
 @st.cache_data(ttl=3600)
-def fetch_all_data(ticker):
+def fetch_data(ticker):
     asset = yf.download(ticker, period="5y", interval="1d", progress=False)
     dxy = yf.download("DX-Y.NYB", period="5y", interval="1d", progress=False)
     us10y = yf.download("^TNX", period="5y", interval="1d", progress=False)
@@ -118,7 +133,7 @@ def fetch_all_data(ticker):
     asset.dropna(inplace=True)
     return asset
 
-# ---------------- FEATURE ENGINEERING (MATCH TRAINING) ----------------
+# ---------------- FEATURE ENGINEERING ----------------
 def create_features(df):
     df = df.copy()
 
@@ -163,41 +178,38 @@ def create_features(df):
     latest = df[features].iloc[-1]
     return latest.values.reshape(1, -1)
 
-# ---------------- BIAS + TRADER MESSAGE ----------------
-def get_bias_and_message(model, X):
+# ---------------- BIAS + SCORE ----------------
+def get_bias_info(model, X):
     prob = model.predict_proba(X)[0][1]
+    score = int(prob * 100)
 
     if prob > 0.6:
-        return (
-            "Bullish 🟢",
-            "bullish",
-            "📈 Bias Bullish → Look for BUY entries near M15 demand/support zones."
-        )
+        bias = "Bullish 🟢"
+        css = "bullish"
+        msg = "📈 Buy near M15 demand/support during Kill Zone."
     elif prob < 0.4:
-        return (
-            "Bearish 🔴",
-            "bearish",
-            "📉 Bias Bearish → Look for SELL entries near M15 supply/resistance zones."
-        )
+        bias = "Bearish 🔴"
+        css = "bearish"
+        msg = "📉 Sell near M15 supply/resistance during Kill Zone."
     else:
-        return (
-            "Neutral 🟡",
-            "neutral",
-            "⚠️ Neutral Bias → Wait for clear structure before entering trades."
-        )
+        bias = "Neutral 🟡"
+        css = "neutral"
+        msg = "⚠️ Wait for structure + Kill Zone alignment."
+
+    return bias, css, msg, score
 
 # ---------------- MAIN ----------------
 try:
     gold_model, jpy_model = load_models()
 
-    gold_data = fetch_all_data("GC=F")
-    jpy_data = fetch_all_data("JPY=X")
+    gold_df = fetch_data("GC=F")
+    jpy_df = fetch_data("JPY=X")
 
-    gold_X = create_features(gold_data)
-    jpy_X = create_features(jpy_data)
+    gold_X = create_features(gold_df)
+    jpy_X = create_features(jpy_df)
 
-    gold_bias, gold_class, gold_msg = get_bias_and_message(gold_model, gold_X)
-    jpy_bias, jpy_class, jpy_msg = get_bias_and_message(jpy_model, jpy_X)
+    gold_bias, gold_css, gold_msg, gold_score = get_bias_info(gold_model, gold_X)
+    jpy_bias, jpy_css, jpy_msg, jpy_score = get_bias_info(jpy_model, jpy_X)
 
     col1, col2 = st.columns(2)
 
@@ -205,22 +217,26 @@ try:
         st.markdown(f"""
         <div class="neon-card">
             <div>🟡 XAUUSD (Gold)</div>
-            <div class="{gold_class}">{gold_bias}</div>
+            <div class="{gold_css}">{gold_bias}</div>
             <div class="message">{gold_msg}</div>
         </div>
         """, unsafe_allow_html=True)
+        st.markdown('<div class="gauge-title">Bias Strength Meter</div>', unsafe_allow_html=True)
+        st.progress(gold_score)
 
     with col2:
         st.markdown(f"""
         <div class="neon-card">
             <div>💴 USDJPY</div>
-            <div class="{jpy_class}">{jpy_bias}</div>
+            <div class="{jpy_css}">{jpy_bias}</div>
             <div class="message">{jpy_msg}</div>
         </div>
         """, unsafe_allow_html=True)
+        st.markdown('<div class="gauge-title">Bias Strength Meter</div>', unsafe_allow_html=True)
+        st.progress(jpy_score)
 
     st.markdown("---")
-    st.write("🕒 Last Updated:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    st.write("🕒 Last Updated:", get_ist_time().strftime("%Y-%m-%d %H:%M:%S IST"))
 
 except Exception as e:
     st.error(f"❌ Error loading data or model: {e}")
