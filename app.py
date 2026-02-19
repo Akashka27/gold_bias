@@ -8,7 +8,7 @@ from datetime import datetime
 import pytz
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(page_title="AI Neon Bias Dashboard", layout="wide")
+st.set_page_config(page_title="AI  Bias Dashboard", layout="wide")
 
 # ---------------- NEON CSS ----------------
 st.markdown("""
