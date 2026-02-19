@@ -3,5 +3,6 @@ pandas
 numpy
 joblib
 yfinance
+ta
 scikit-learn
 xgboost
