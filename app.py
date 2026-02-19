@@ -17,36 +17,37 @@ st.set_page_config(
 # ---------------- ANIMATED NEON GRADIENT BACKGROUND ----------------
 st.markdown("""
 <style>
-/* Animated Neon Gradient Background */
-body {
-    background: linear-gradient(-45deg, #020617, #020617, #020617, #00111a);
+
+/* Animated Gradient Background (Fast + Professional) */
+.stApp {
+    background: linear-gradient(-45deg, #020617, #020617, #031525, #00111a);
     background-size: 400% 400%;
-    animation: gradientBG 15s ease infinite;
+    animation: gradientMove 18s ease infinite;
 }
 
-@keyframes gradientBG {
+@keyframes gradientMove {
     0% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
     100% { background-position: 0% 50%; }
 }
 
-/* Remove top spacing */
+/* Remove extra top spacing */
 .block-container {
-    padding-top: 1.2rem;
+    padding-top: 1.5rem !important;
     max-width: 1200px;
 }
 
 /* Neon Title */
 .neon-title {
     text-align: center;
-    font-size: 46px;
-    font-weight: bold;
+    font-size: 44px;
+    font-weight: 800;
     color: #00f7ff;
     text-shadow:
         0 0 10px #00f7ff,
-        0 0 25px #00f7ff,
-        0 0 50px #00f7ff;
-    margin-bottom: 5px;
+        0 0 30px #00f7ff,
+        0 0 60px #00f7ff;
+    margin-bottom: 6px;
 }
 
 /* Subtitle */
@@ -57,24 +58,24 @@ body {
     margin-bottom: 25px;
 }
 
-/* Glass Cards */
+/* Glass Card (Trading Panel) */
 .glass-card {
-    background: rgba(15, 23, 42, 0.55);
-    padding: 25px;
+    background: rgba(15, 23, 42, 0.6);
+    padding: 28px;
     border-radius: 18px;
     backdrop-filter: blur(14px);
     border: 1px solid rgba(0,255,255,0.15);
-    box-shadow: 0 0 25px rgba(0,255,255,0.10);
+    box-shadow: 0 0 25px rgba(0,255,255,0.08);
     transition: 0.3s ease-in-out;
 }
 
-/* Hover Glow Effect */
+/* Hover Glow */
 .glass-card:hover {
     box-shadow: 0 0 35px rgba(0,255,255,0.25);
     transform: translateY(-2px);
 }
 
-/* Bias Styles */
+/* Bias Glow Styles */
 .bullish {
     color: #00ff9f;
     font-size: 28px;
@@ -96,21 +97,22 @@ body {
     text-shadow: 0 0 12px #ffd700;
 }
 
-/* Info text */
+/* Section Title */
+.section-title {
+    font-size: 30px;
+    font-weight: 700;
+    color: #38bdf8;
+    text-shadow: 0 0 12px rgba(56,189,248,0.7);
+    margin-top: 10px;
+}
+
+/* Info Text */
 .info-text {
     font-size: 16px;
     color: #e2e8f0;
     margin-top: 8px;
 }
 
-/* Section Title Glow */
-.section-title {
-    font-size: 28px;
-    font-weight: bold;
-    color: #38bdf8;
-    text-shadow: 0 0 12px rgba(56,189,248,0.7);
-    margin-top: 10px;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -160,7 +162,7 @@ def load_models():
     jpy_model = joblib.load("usdjpy_daily_bias_xgb.pkl")
     return gold_model, jpy_model
 
-# ---------------- FETCH DATA (MATCH TRAINING SCRIPT) ----------------
+# ---------------- FETCH DATA (MATCHES YOUR TRAINING) ----------------
 @st.cache_data(ttl=3600)
 def fetch_data(ticker):
     asset = yf.download(ticker, period="5y", interval="1d", progress=False)
@@ -188,7 +190,7 @@ def fetch_data(ticker):
     asset.dropna(inplace=True)
     return asset
 
-# ---------------- FEATURE ENGINEERING (IDENTICAL TO TRAINING) ----------------
+# ---------------- FEATURE ENGINEERING (IDENTICAL TO TRAINING SCRIPT) ----------------
 def create_features(df):
     df = df.copy()
 
@@ -233,7 +235,7 @@ def create_features(df):
     latest = df[features].iloc[-1]
     return latest.values.reshape(1, -1)
 
-# ---------------- EXECUTION PLAN ENGINE ----------------
+# ---------------- EXECUTION PLAN ENGINE (FOR M15 TRADING) ----------------
 def generate_execution_plan(prob, session_name):
     if prob > 0.6:
         bias = '<span class="bullish">Bullish 🟢</span>'
@@ -249,7 +251,7 @@ def generate_execution_plan(prob, session_name):
         avoid = "Avoid trading in chop or low volatility."
 
     if "Asian" in session_name:
-        timing = "Low volatility session. Best to wait for London Kill Zone."
+        timing = "Low volatility. Best to wait for London Kill Zone."
     elif "London" in session_name:
         timing = "High probability session for M15 setups."
     elif "New York" in session_name:
@@ -297,7 +299,7 @@ try:
         st.subheader("💴 USDJPY")
         st.markdown(f"**AI Bias:** {jpy_bias}", unsafe_allow_html=True)
         st.markdown(f"<div class='info-text'><b>Execution Plan:</b> {jpy_exec}</div>", unsafe_allow_html=True)
-        st.markdown(f_togglef"<div class='info-text'><b>Avoid:</b> {jpy_avoid}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='info-text'><b>Avoid:</b> {jpy_avoid}</div>", unsafe_allow_html=True)
         st.markdown(f"<div class='info-text'><b>Session Guidance:</b> {jpy_timing}</div>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
