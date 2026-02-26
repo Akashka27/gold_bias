@@ -260,6 +260,19 @@ def calculate_daily_features(data):
     
     return df
 
+# ---------------- M15 INDICATORS ----------------
+def calculate_m15_indicators(data):
+    """Calculate indicators for M15 data"""
+    df = data.copy()
+    
+    # Calculate ATR for M15
+    df['ATR_14'] = ta.volatility.AverageTrueRange(df['High'], df['Low'], df['Close'], window=14).average_true_range()
+    
+    # Calculate SMA for M15
+    df['SMA_20'] = ta.trend.sma_indicator(df['Close'], window=20)
+    
+    return df
+
 # ---------------- LOAD AI MODEL ----------------
 @st.cache_resource
 def load_daily_model():
@@ -287,7 +300,7 @@ def predict_daily_bias(data, ticker, model):
     """Predict daily bias using the trained model"""
     df = calculate_daily_features(data)
     latest = df.iloc[-1]
-    prev_day = df.iloc[-2]
+    prev_day = df.iloc[-2] if len(df) > 1 else latest
     
     # This is where you'd use your actual trained model
     # For demo, we're using a rule-based system that simulates model output
@@ -295,16 +308,16 @@ def predict_daily_bias(data, ticker, model):
     # Features for model
     features = {
         'price': latest['Close'],
-        'sma_20': latest['SMA_20'],
-        'sma_50': latest['SMA_50'],
-        'ema_12': latest['EMA_12'],
-        'ema_26': latest['EMA_26'],
-        'rsi': latest['RSI'],
-        'macd': latest['MACD'],
-        'macd_signal': latest['MACD_signal'],
-        'atr': latest['ATR'],
+        'sma_20': latest['SMA_20'] if not pd.isna(latest['SMA_20']) else latest['Close'],
+        'sma_50': latest['SMA_50'] if not pd.isna(latest['SMA_50']) else latest['Close'],
+        'ema_12': latest['EMA_12'] if not pd.isna(latest['EMA_12']) else latest['Close'],
+        'ema_26': latest['EMA_26'] if not pd.isna(latest['EMA_26']) else latest['Close'],
+        'rsi': latest['RSI'] if not pd.isna(latest['RSI']) else 50,
+        'macd': latest['MACD'] if not pd.isna(latest['MACD']) else 0,
+        'macd_signal': latest['MACD_signal'] if not pd.isna(latest['MACD_signal']) else 0,
+        'atr': latest['ATR'] if not pd.isna(latest['ATR']) else 0,
         'volume_ratio': latest.get('Volume_ratio', 1),
-        'bb_position': (latest['Close'] - latest['BB_lower']) / (latest['BB_upper'] - latest['BB_lower']) if not pd.isna(latest['BB_upper']) and not pd.isna(latest['BB_lower']) else 0.5
+        'bb_position': (latest['Close'] - latest['BB_lower']) / (latest['BB_upper'] - latest['BB_lower']) if not pd.isna(latest['BB_upper']) and not pd.isna(latest['BB_lower']) and (latest['BB_upper'] - latest['BB_lower']) != 0 else 0.5
     }
     
     # Calculate daily bias score (simulating model prediction)
@@ -312,26 +325,26 @@ def predict_daily_bias(data, ticker, model):
     signals = []
     
     # Trend following (weights based on model importance)
-    if not pd.isna(features['sma_20']) and not pd.isna(features['sma_50']):
-        if features['price'] > features['sma_20'] and features['sma_20'] > features['sma_50']:
+    if not pd.isna(latest['SMA_20']) and not pd.isna(latest['SMA_50']):
+        if latest['Close'] > latest['SMA_20'] and latest['SMA_20'] > latest['SMA_50']:
             score += 1.5
             signals.append("Golden Cross (Daily)")
-        elif features['price'] < features['sma_20'] and features['sma_20'] < features['sma_50']:
+        elif latest['Close'] < latest['SMA_20'] and latest['SMA_20'] < latest['SMA_50']:
             score -= 1.5
             signals.append("Death Cross (Daily)")
     
     # RSI signals
-    if not pd.isna(features['rsi']):
-        if features['rsi'] < 30:
+    if not pd.isna(latest['RSI']):
+        if latest['RSI'] < 30:
             score += 1.2
             signals.append("Oversold (Daily)")
-        elif features['rsi'] > 70:
+        elif latest['RSI'] > 70:
             score -= 1.2
             signals.append("Overbought (Daily)")
     
     # MACD signals
-    if not pd.isna(features['macd']) and not pd.isna(features['macd_signal']):
-        if features['macd'] > features['macd_signal']:
+    if not pd.isna(latest['MACD']) and not pd.isna(latest['MACD_signal']):
+        if latest['MACD'] > latest['MACD_signal']:
             score += 1.3
             signals.append("MACD Bullish (Daily)")
         else:
@@ -339,11 +352,12 @@ def predict_daily_bias(data, ticker, model):
             signals.append("MACD Bearish (Daily)")
     
     # Bollinger Bands
-    if not pd.isna(features['bb_position']):
-        if features['bb_position'] < 0.2:
+    if not pd.isna(latest['BB_upper']) and not pd.isna(latest['BB_lower']):
+        bb_position = (latest['Close'] - latest['BB_lower']) / (latest['BB_upper'] - latest['BB_lower']) if (latest['BB_upper'] - latest['BB_lower']) != 0 else 0.5
+        if bb_position < 0.2:
             score += 1.0
             signals.append("BB Oversold")
-        elif features['bb_position'] > 0.8:
+        elif bb_position > 0.8:
             score -= 1.0
             signals.append("BB Overbought")
     
@@ -387,12 +401,9 @@ def predict_daily_bias(data, ticker, model):
 # ---------------- M15 LEVELS DETECTION ----------------
 def detect_m15_levels(data, ticker):
     """Detect key support and resistance levels for M15 entries/exits"""
-    df = data.copy()
+    # Calculate indicators first
+    df = calculate_m15_indicators(data)
     latest = df.iloc[-1]
-    
-    # Calculate M15 indicators
-    df['SMA_20'] = ta.trend.sma_indicator(df['Close'], window=20)
-    df['ATR_14'] = ta.volatility.AverageTrueRange(df['High'], df['Low'], df['Close'], window=14).average_true_range()
     
     asset = ASSET_INFO[ticker]
     current_price = latest['Close']
@@ -437,9 +448,9 @@ def detect_m15_levels(data, ticker):
         'support': m15_support,
         'resistance': m15_resistance,
         'current_price': current_price,
-        'atr': latest['ATR_14'],
-        'atr_pips': latest['ATR_14'] / asset['pip_value'],
-        'sma_20': latest['SMA_20']
+        'atr': latest['ATR_14'] if not pd.isna(latest['ATR_14']) else 0,
+        'atr_pips': latest['ATR_14'] / asset['pip_value'] if not pd.isna(latest['ATR_14']) and asset['pip_value'] != 0 else 0,
+        'sma_20': latest['SMA_20'] if not pd.isna(latest['SMA_20']) else current_price
     }
 
 # ---------------- RISK MANAGEMENT ----------------
@@ -448,7 +459,7 @@ def calculate_trade_setup(daily_bias, m15_levels, ticker, account_balance=10000,
     
     asset = ASSET_INFO[ticker]
     current_price = m15_levels['current_price']
-    atr = m15_levels['atr']
+    atr = m15_levels['atr'] if m15_levels['atr'] > 0 else current_price * 0.001  # Default ATR if not available
     bias = daily_bias['bias']
     confidence = daily_bias['confidence']
     
@@ -459,7 +470,8 @@ def calculate_trade_setup(daily_bias, m15_levels, ticker, account_balance=10000,
         return {
             'action': 'HOLD',
             'reason': 'Daily bias is sideways',
-            'daily_bias': bias
+            'daily_bias': bias,
+            'confidence': confidence
         }
     
     if bias == "BULLISH":
@@ -506,7 +518,7 @@ def calculate_trade_setup(daily_bias, m15_levels, ticker, account_balance=10000,
                     'risk_amount': risk_amount,
                     'risk_reward_1': 2.0,
                     'risk_reward_2': 3.0,
-                    'stop_distance_pips': stop_distance / asset['pip_value'],
+                    'stop_distance_pips': stop_distance / asset['pip_value'] if asset['pip_value'] != 0 else 0,
                     'stop_distance_pct': (stop_distance / current_price) * 100,
                     'confidence': confidence,
                     'daily_bias': bias,
@@ -557,7 +569,7 @@ def calculate_trade_setup(daily_bias, m15_levels, ticker, account_balance=10000,
                     'risk_amount': risk_amount,
                     'risk_reward_1': 2.0,
                     'risk_reward_2': 3.0,
-                    'stop_distance_pips': stop_distance / asset['pip_value'],
+                    'stop_distance_pips': stop_distance / asset['pip_value'] if asset['pip_value'] != 0 else 0,
                     'stop_distance_pct': (stop_distance / current_price) * 100,
                     'confidence': confidence,
                     'daily_bias': bias,
@@ -575,6 +587,8 @@ def calculate_trade_setup(daily_bias, m15_levels, ticker, account_balance=10000,
 # ---------------- FORMAT PRICE ----------------
 def format_price(price, ticker):
     """Format price based on asset type"""
+    if pd.isna(price) or price is None:
+        return "N/A"
     asset = ASSET_INFO[ticker]
     if ticker == GOLD_TICKER:
         return f"${price:.2f}"
@@ -677,7 +691,7 @@ with col1:
         # Load M15 data for entries
         m15_data = load_m15_data(GOLD_TICKER)
         
-        if daily_data is not None and m15_data is not None:
+        if daily_data is not None and m15_data is not None and not daily_data.empty and not m15_data.empty:
             # Get daily bias from model
             daily_bias = predict_daily_bias(daily_data, GOLD_TICKER, daily_model)
             daily_predictions['GOLD'] = daily_bias
@@ -714,13 +728,12 @@ with col1:
             # Daily Signals
             if daily_bias['signals']:
                 st.markdown("##### 📊 Daily AI Signals")
-                cols = st.columns(len(daily_bias['signals']))
-                for i, signal in enumerate(daily_bias['signals']):
-                    with cols[i]:
-                        st.info(signal)
+                for signal in daily_bias['signals']:
+                    st.info(signal)
             
             # M15 Levels
             st.markdown("### 🎯 M15 Key Levels")
+            st.markdown(f"**Current Price:** {format_price(m15_levels['current_price'], GOLD_TICKER)}")
             
             m15_col1, m15_col2 = st.columns(2)
             
@@ -765,15 +778,14 @@ with col1:
                 
                 # Entry Zone
                 st.markdown(f"**Entry Zone:** {format_price(trade_setup['entry_zone'][0], GOLD_TICKER)} - {format_price(trade_setup['entry_zone'][1], GOLD_TICKER)}")
-                st.markdown(f"**Current Price:** {format_price(trade_setup['current_price'], GOLD_TICKER)}")
                 
                 # Trade Levels
                 col_tp1, col_tp2, col_sl = st.columns(3)
-                with col_tp1:
-                    st.metric("Stop Loss", format_price(trade_setup['stop_loss'], GOLD_TICKER))
-                with col_tp2:
-                    st.metric("Take Profit 1", format_price(trade_setup['take_profit_1'], GOLD_TICKER))
                 with col_sl:
+                    st.metric("Stop Loss", format_price(trade_setup['stop_loss'], GOLD_TICKER))
+                with col_tp1:
+                    st.metric("Take Profit 1", format_price(trade_setup['take_profit_1'], GOLD_TICKER))
+                with col_tp2:
                     st.metric("Take Profit 2", format_price(trade_setup['take_profit_2'], GOLD_TICKER))
                 
                 # Position Sizing
@@ -787,7 +799,7 @@ with col1:
                     st.metric("RR Ratio", f"1:{trade_setup['risk_reward_1']:.2f}")
                 
                 # Alternative TP
-                if trade_setup['take_profit_alt']:
+                if trade_setup['take_profit_alt'] and trade_setup['take_profit_alt'] > trade_setup['current_price']:
                     st.info(f"🎯 Daily Target: {format_price(trade_setup['take_profit_alt'], GOLD_TICKER)} (RR: 1:{trade_setup['tp_alt_rr']:.2f})")
                 
                 # Risk Info
@@ -806,7 +818,9 @@ with col1:
             
             # M15 Chart
             with st.expander("📈 M15 Price Chart"):
-                st.line_chart(m15_data['Close'].tail(50))
+                st.line_chart(m15_data['Close'].tail(100))
+        else:
+            st.error("Unable to load Gold data")
 
 # ---------------- USD/JPY ANALYSIS ----------------
 with col2:
@@ -818,7 +832,7 @@ with col2:
         # Load M15 data for entries
         m15_data = load_m15_data(USDJPY_TICKER)
         
-        if daily_data is not None and m15_data is not None:
+        if daily_data is not None and m15_data is not None and not daily_data.empty and not m15_data.empty:
             # Get daily bias from model
             daily_bias = predict_daily_bias(daily_data, USDJPY_TICKER, daily_model)
             daily_predictions['USDJPY'] = daily_bias
@@ -855,13 +869,12 @@ with col2:
             # Daily Signals
             if daily_bias['signals']:
                 st.markdown("##### 📊 Daily AI Signals")
-                cols = st.columns(len(daily_bias['signals']))
-                for i, signal in enumerate(daily_bias['signals']):
-                    with cols[i]:
-                        st.info(signal)
+                for signal in daily_bias['signals']:
+                    st.info(signal)
             
             # M15 Levels
             st.markdown("### 🎯 M15 Key Levels")
+            st.markdown(f"**Current Price:** {format_price(m15_levels['current_price'], USDJPY_TICKER)}")
             
             m15_col1, m15_col2 = st.columns(2)
             
@@ -906,15 +919,14 @@ with col2:
                 
                 # Entry Zone
                 st.markdown(f"**Entry Zone:** {format_price(trade_setup['entry_zone'][0], USDJPY_TICKER)} - {format_price(trade_setup['entry_zone'][1], USDJPY_TICKER)}")
-                st.markdown(f"**Current Price:** {format_price(trade_setup['current_price'], USDJPY_TICKER)}")
                 
                 # Trade Levels
                 col_tp1, col_tp2, col_sl = st.columns(3)
-                with col_tp1:
-                    st.metric("Stop Loss", format_price(trade_setup['stop_loss'], USDJPY_TICKER))
-                with col_tp2:
-                    st.metric("Take Profit 1", format_price(trade_setup['take_profit_1'], USDJPY_TICKER))
                 with col_sl:
+                    st.metric("Stop Loss", format_price(trade_setup['stop_loss'], USDJPY_TICKER))
+                with col_tp1:
+                    st.metric("Take Profit 1", format_price(trade_setup['take_profit_1'], USDJPY_TICKER))
+                with col_tp2:
                     st.metric("Take Profit 2", format_price(trade_setup['take_profit_2'], USDJPY_TICKER))
                 
                 # Position Sizing
@@ -928,7 +940,7 @@ with col2:
                     st.metric("RR Ratio", f"1:{trade_setup['risk_reward_1']:.2f}")
                 
                 # Alternative TP
-                if trade_setup['take_profit_alt']:
+                if trade_setup['take_profit_alt'] and trade_setup['take_profit_alt'] < trade_setup['current_price']:
                     st.info(f"🎯 Daily Target: {format_price(trade_setup['take_profit_alt'], USDJPY_TICKER)} (RR: 1:{trade_setup['tp_alt_rr']:.2f})")
                 
                 # Risk Info
@@ -947,7 +959,9 @@ with col2:
             
             # M15 Chart
             with st.expander("📈 M15 Price Chart"):
-                st.line_chart(m15_data['Close'].tail(50))
+                st.line_chart(m15_data['Close'].tail(100))
+        else:
+            st.error("Unable to load USD/JPY data")
 
 # ---------------- SUMMARY SECTION ----------------
 if daily_predictions:
