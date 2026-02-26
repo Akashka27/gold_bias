@@ -806,4 +806,417 @@ with st.sidebar:
     st.subheader("⏰ Market Hours")
     now = datetime.now(pytz.timezone('US/Eastern'))
     market_open = now.replace(hour=9, minute=30) <= now <= now.replace(hour=16, minute=0)
-    forex_24h = now.weekday() < 5  # Monday to
+    forex_24h = now.weekday() < 5  # Monday to Friday
+    
+    st.markdown(f"**Gold (COMEX):** {'🟢 Open' if market_open else '🔴 Closed'}")
+    st.markdown(f"**USD/JPY (Forex):** {'🟢 24/5' if forex_24h else '🔴 Weekend'}")
+
+# ---------------- LOAD MODELS ----------------
+models = load_ai_models()
+
+# ---------------- MAIN DASHBOARD ----------------
+st.markdown("## 📊 M15 AI Analysis & Trading Signals")
+
+# Create two columns for Gold and USD/JPY
+col1, col2 = st.columns(2)
+
+# Store predictions for both assets
+predictions = {}
+risk_management = {}
+
+# ---------------- GOLD ANALYSIS ----------------
+with col1:
+    st.markdown(f"### 🏆 GOLD (GC=F) - M15")
+    
+    with st.spinner("Analyzing Gold M15 data..."):
+        data = load_m15_data(GOLD_TICKER)
+        
+        if data is not None and not data.empty:
+            # Get AI prediction
+            prediction = predict_bias_with_ai(data, GOLD_TICKER, models)
+            predictions['GOLD'] = prediction
+            
+            # Detect key levels
+            levels = detect_key_levels(data, GOLD_TICKER)
+            
+            # Calculate risk management
+            risk_mgmt = calculate_risk_management(levels, prediction, GOLD_TICKER, account_balance, risk_percent)
+            risk_management['GOLD'] = risk_mgmt
+            
+            # Display bias with appropriate styling
+            bias_class = prediction['bias'].lower()
+            if prediction['bias'] == "BULLISH":
+                bias_emoji = "🚀"
+                bg_color = "#00ff9f20"
+            elif prediction['bias'] == "BEARISH":
+                bias_emoji = "📉"
+                bg_color = "#ff4d4d20"
+            else:
+                bias_emoji = "⏸️"
+                bg_color = "#ffd70020"
+            
+            st.markdown(f"""
+            <div class="neon-card gold-card">
+                <h2 class="gold-text">🏆 GOLD M15</h2>
+                <div class="{bias_class}">{bias_emoji} {prediction['bias']} {bias_emoji}</div>
+                <h3>{format_price(levels['current_price'], GOLD_TICKER)}</h3>
+                <p style="color: #888">Strength: {prediction['strength']} | Confidence: {prediction['confidence']:.1%}</p>
+                <p style="color: #888">ATR (14): {format_price(levels['atr'], GOLD_TICKER)} | {levels['atr_pips']:.0f} pips</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # AI Signals
+            if prediction['signals']:
+                st.markdown("##### 🤖 AI Signals Detected")
+                signals_html = ""
+                for signal in prediction['signals']:
+                    signals_html += f'<span style="background: {bg_color}; padding: 5px 10px; border-radius: 15px; margin: 0 5px;">{signal}</span>'
+                st.markdown(f"<div style='margin: 10px 0;'>{signals_html}</div>", unsafe_allow_html=True)
+            
+            # Key Levels
+            st.subheader("🎯 Key Support & Resistance")
+            
+            col_level1, col_level2 = st.columns(2)
+            
+            with col_level1:
+                st.markdown("##### 🟢 Support Levels")
+                if levels['support']:
+                    for level in levels['support']:
+                        st.markdown(f"""
+                        <div class="level-box support">
+                            <strong>{format_price(level['price'], GOLD_TICKER)}</strong><br>
+                            <small>Distance: {level['distance_pct']:.1f}% ({level['distance_pips']:.0f} pips)</small><br>
+                            <span class="risk-badge risk-{'low' if level['strength'] == 'MAJOR' else 'medium'}">{level['strength']}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("No support levels detected")
+            
+            with col_level2:
+                st.markdown("##### 🔴 Resistance Levels")
+                if levels['resistance']:
+                    for level in levels['resistance']:
+                        st.markdown(f"""
+                        <div class="level-box resistance">
+                            <strong>{format_price(level['price'], GOLD_TICKER)}</strong><br>
+                            <small>Distance: {level['distance_pct']:.1f}% ({level['distance_pips']:.0f} pips)</small><br>
+                            <span class="risk-badge risk-{'low' if level['strength'] == 'MAJOR' else 'medium'}">{level['strength']}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("No resistance levels detected")
+            
+            # Trading Signal with Risk Management
+            st.subheader("💼 Trading Signal")
+            
+            if risk_mgmt['action'] != 'HOLD' and prediction['confidence'] >= confidence_threshold:
+                # Action box
+                action_color = "#00ff9f" if risk_mgmt['action'] == "BUY" else "#ff4d4d"
+                
+                # Check risk-reward ratio
+                if risk_mgmt['risk_reward_1'] >= min_rr_ratio:
+                    st.markdown(f"""
+                    <div style="background: {bg_color}; padding: 20px; border-radius: 10px; border-left: 4px solid {action_color};">
+                        <h3 style="color: {action_color}; margin:0">{risk_mgmt['action']} SIGNAL</h3>
+                        <p style="color: #888">Quality: {risk_mgmt['trade_quality']} | Confidence: {prediction['confidence']:.1%}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Entry and Levels
+                    col_entry1, col_entry2, col_entry3 = st.columns(3)
+                    with col_entry1:
+                        st.metric("Entry", format_price(risk_mgmt['current_price'], GOLD_TICKER))
+                    with col_entry2:
+                        st.metric("Stop Loss", format_price(risk_mgmt['stop_loss'], GOLD_TICKER), 
+                                 delta=f"{risk_mgmt['stop_distance_pct']:.2f}%" if risk_mgmt['action'] == "BUY" else f"+{risk_mgmt['stop_distance_pct']:.2f}%")
+                    with col_entry3:
+                        st.metric("Take Profit 1", format_price(risk_mgmt['take_profit_1'], GOLD_TICKER) if risk_mgmt['take_profit_1'] else "N/A")
+                    
+                    # Position Sizing
+                    st.markdown("##### 📊 Position Sizing")
+                    col_pos1, col_pos2, col_pos3 = st.columns(3)
+                    with col_pos1:
+                        st.metric("Position Size", risk_mgmt['position_size_units'])
+                    with col_pos2:
+                        st.metric("Risk Amount", f"${risk_mgmt['risk_amount']:.2f}")
+                    with col_pos3:
+                        st.metric("Risk-Reward 1", f"1:{risk_mgmt['risk_reward_1']:.2f}" if risk_mgmt['risk_reward_1'] else "N/A")
+                    
+                    # Alternative Take Profit if available
+                    if risk_mgmt['take_profit_alt']:
+                        st.info(f"Alternative TP at {format_price(risk_mgmt['take_profit_alt'], GOLD_TICKER)} (RR: 1:{risk_mgmt['tp_alt_rr']:.2f})")
+                    
+                    # Risk Warning
+                    risk_class = risk_mgmt['risk_level'].split()[0].lower()
+                    st.markdown(f"""
+                    <div style="margin-top: 10px;">
+                        <span class="risk-badge risk-{risk_class}">{risk_mgmt['risk_level']}</span>
+                        <span class="risk-badge risk-medium">Stop Distance: {risk_mgmt['stop_distance_pips']:.0f} pips</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.warning(f"⚠️ Risk-Reward ({risk_mgmt['risk_reward_1']:.2f}) below minimum threshold ({min_rr_ratio})")
+                    
+            elif risk_mgmt['action'] == 'HOLD':
+                if prediction['bias'] == "SIDEWAYS":
+                    st.info("⏸️ Market is sideways. No clear signal. Wait for breakout.")
+                else:
+                    st.info(f"⏸️ No trade signal. Bias: {prediction['bias']}")
+            elif prediction['confidence'] < confidence_threshold:
+                st.warning(f"⚠️ Confidence ({prediction['confidence']:.1%}) below threshold ({confidence_threshold:.1%})")
+            
+            # M15 Chart
+            st.subheader("📈 M15 Price Action")
+            
+            # Create a simple price chart with levels
+            chart_data = data[['Close']].copy()
+            chart_data.columns = ['Price']
+            
+            # Add levels to chart data
+            for i, level in enumerate(levels['support'][:2]):
+                chart_data[f'Sup{i+1}'] = level['price']
+            for i, level in enumerate(levels['resistance'][:2]):
+                chart_data[f'Res{i+1}'] = level['price']
+            
+            st.line_chart(chart_data)
+            
+            # Recent candles
+            with st.expander("📊 Recent M15 Candles"):
+                recent_data = data.tail(10)[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
+                recent_data.index = recent_data.index.strftime('%H:%M')
+                st.dataframe(recent_data)
+            
+        else:
+            st.error("⚠️ Unable to load Gold data")
+
+# ---------------- USD/JPY ANALYSIS ----------------
+with col2:
+    st.markdown(f"### 💱 USD/JPY - M15")
+    
+    with st.spinner("Analyzing USD/JPY M15 data..."):
+        data = load_m15_data(USDJPY_TICKER)
+        
+        if data is not None and not data.empty:
+            # Get AI prediction
+            prediction = predict_bias_with_ai(data, USDJPY_TICKER, models)
+            predictions['USDJPY'] = prediction
+            
+            # Detect key levels
+            levels = detect_key_levels(data, USDJPY_TICKER)
+            
+            # Calculate risk management
+            risk_mgmt = calculate_risk_management(levels, prediction, USDJPY_TICKER, account_balance, risk_percent)
+            risk_management['USDJPY'] = risk_mgmt
+            
+            # Display bias with appropriate styling
+            bias_class = prediction['bias'].lower()
+            if prediction['bias'] == "BULLISH":
+                bias_emoji = "🚀"
+                bg_color = "#00ff9f20"
+            elif prediction['bias'] == "BEARISH":
+                bias_emoji = "📉"
+                bg_color = "#ff4d4d20"
+            else:
+                bias_emoji = "⏸️"
+                bg_color = "#ffd70020"
+            
+            st.markdown(f"""
+            <div class="neon-card forex-card">
+                <h2 class="forex-text">💱 USD/JPY M15</h2>
+                <div class="{bias_class}">{bias_emoji} {prediction['bias']} {bias_emoji}</div>
+                <h3>{format_price(levels['current_price'], USDJPY_TICKER)}</h3>
+                <p style="color: #888">Strength: {prediction['strength']} | Confidence: {prediction['confidence']:.1%}</p>
+                <p style="color: #888">ATR (14): {format_price(levels['atr'], USDJPY_TICKER)} | {levels['atr_pips']:.1f} pips</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # AI Signals
+            if prediction['signals']:
+                st.markdown("##### 🤖 AI Signals Detected")
+                signals_html = ""
+                for signal in prediction['signals']:
+                    signals_html += f'<span style="background: {bg_color}; padding: 5px 10px; border-radius: 15px; margin: 0 5px;">{signal}</span>'
+                st.markdown(f"<div style='margin: 10px 0;'>{signals_html}</div>", unsafe_allow_html=True)
+            
+            # Key Levels
+            st.subheader("🎯 Key Support & Resistance")
+            
+            col_level1, col_level2 = st.columns(2)
+            
+            with col_level1:
+                st.markdown("##### 🟢 Support Levels")
+                if levels['support']:
+                    for level in levels['support']:
+                        st.markdown(f"""
+                        <div class="level-box support">
+                            <strong>{format_price(level['price'], USDJPY_TICKER)}</strong><br>
+                            <small>Distance: {level['distance_pct']:.2f}% ({level['distance_pips']:.1f} pips)</small><br>
+                            <span class="risk-badge risk-{'low' if level['strength'] == 'MAJOR' else 'medium'}">{level['strength']}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("No support levels detected")
+            
+            with col_level2:
+                st.markdown("##### 🔴 Resistance Levels")
+                if levels['resistance']:
+                    for level in levels['resistance']:
+                        st.markdown(f"""
+                        <div class="level-box resistance">
+                            <strong>{format_price(level['price'], USDJPY_TICKER)}</strong><br>
+                            <small>Distance: {level['distance_pct']:.2f}% ({level['distance_pips']:.1f} pips)</small><br>
+                            <span class="risk-badge risk-{'low' if level['strength'] == 'MAJOR' else 'medium'}">{level['strength']}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("No resistance levels detected")
+            
+            # Trading Signal with Risk Management
+            st.subheader("💼 Trading Signal")
+            
+            if risk_mgmt['action'] != 'HOLD' and prediction['confidence'] >= confidence_threshold:
+                # Action box
+                action_color = "#00ff9f" if risk_mgmt['action'] == "BUY" else "#ff4d4d"
+                
+                # Check risk-reward ratio
+                if risk_mgmt['risk_reward_1'] >= min_rr_ratio:
+                    st.markdown(f"""
+                    <div style="background: {bg_color}; padding: 20px; border-radius: 10px; border-left: 4px solid {action_color};">
+                        <h3 style="color: {action_color}; margin:0">{risk_mgmt['action']} SIGNAL</h3>
+                        <p style="color: #888">Quality: {risk_mgmt['trade_quality']} | Confidence: {prediction['confidence']:.1%}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Entry and Levels
+                    col_entry1, col_entry2, col_entry3 = st.columns(3)
+                    with col_entry1:
+                        st.metric("Entry", format_price(risk_mgmt['current_price'], USDJPY_TICKER))
+                    with col_entry2:
+                        st.metric("Stop Loss", format_price(risk_mgmt['stop_loss'], USDJPY_TICKER), 
+                                 delta=f"{risk_mgmt['stop_distance_pct']:.2f}%" if risk_mgmt['action'] == "SELL" else f"+{risk_mgmt['stop_distance_pct']:.2f}%")
+                    with col_entry3:
+                        st.metric("Take Profit 1", format_price(risk_mgmt['take_profit_1'], USDJPY_TICKER) if risk_mgmt['take_profit_1'] else "N/A")
+                    
+                    # Position Sizing
+                    st.markdown("##### 📊 Position Sizing")
+                    col_pos1, col_pos2, col_pos3 = st.columns(3)
+                    with col_pos1:
+                        st.metric("Position Size", risk_mgmt['position_size_units'])
+                    with col_pos2:
+                        st.metric("Risk Amount", f"${risk_mgmt['risk_amount']:.2f}")
+                    with col_pos3:
+                        st.metric("Risk-Reward 1", f"1:{risk_mgmt['risk_reward_1']:.2f}" if risk_mgmt['risk_reward_1'] else "N/A")
+                    
+                    # Alternative Take Profit if available
+                    if risk_mgmt['take_profit_alt']:
+                        st.info(f"Alternative TP at {format_price(risk_mgmt['take_profit_alt'], USDJPY_TICKER)} (RR: 1:{risk_mgmt['tp_alt_rr']:.2f})")
+                    
+                    # Risk Warning
+                    risk_class = risk_mgmt['risk_level'].split()[0].lower()
+                    st.markdown(f"""
+                    <div style="margin-top: 10px;">
+                        <span class="risk-badge risk-{risk_class}">{risk_mgmt['risk_level']}</span>
+                        <span class="risk-badge risk-medium">Stop Distance: {risk_mgmt['stop_distance_pips']:.1f} pips</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.warning(f"⚠️ Risk-Reward ({risk_mgmt['risk_reward_1']:.2f}) below minimum threshold ({min_rr_ratio})")
+                    
+            elif risk_mgmt['action'] == 'HOLD':
+                if prediction['bias'] == "SIDEWAYS":
+                    st.info("⏸️ Market is sideways. No clear signal. Wait for breakout.")
+                else:
+                    st.info(f"⏸️ No trade signal. Bias: {prediction['bias']}")
+            elif prediction['confidence'] < confidence_threshold:
+                st.warning(f"⚠️ Confidence ({prediction['confidence']:.1%}) below threshold ({confidence_threshold:.1%})")
+            
+            # M15 Chart
+            st.subheader("📈 M15 Price Action")
+            
+            # Create a simple price chart with levels
+            chart_data = data[['Close']].copy()
+            chart_data.columns = ['Price']
+            
+            # Add levels to chart data
+            for i, level in enumerate(levels['support'][:2]):
+                chart_data[f'Sup{i+1}'] = level['price']
+            for i, level in enumerate(levels['resistance'][:2]):
+                chart_data[f'Res{i+1}'] = level['price']
+            
+            st.line_chart(chart_data)
+            
+            # Recent candles
+            with st.expander("📊 Recent M15 Candles"):
+                recent_data = data.tail(10)[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
+                recent_data.index = recent_data.index.strftime('%H:%M')
+                st.dataframe(recent_data)
+            
+        else:
+            st.error("⚠️ Unable to load USD/JPY data")
+
+# ---------------- SUMMARY SECTION ----------------
+if predictions:
+    st.markdown("---")
+    st.markdown("## 📊 Market Summary & Correlation")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Gold Bias", predictions['GOLD']['bias'], 
+                 delta=f"{predictions['GOLD']['confidence']:.1%} confidence")
+    
+    with col2:
+        st.metric("USD/JPY Bias", predictions['USDJPY']['bias'],
+                 delta=f"{predictions['USDJPY']['confidence']:.1%} confidence")
+    
+    with col3:
+        # Correlation hint
+        if predictions['GOLD']['bias'] == predictions['USDJPY']['bias']:
+            corr_note = "Same direction"
+            corr_color = "normal"
+        elif (predictions['GOLD']['bias'] == "BULLISH" and predictions['USDJPY']['bias'] == "BEARISH") or \
+             (predictions['GOLD']['bias'] == "BEARISH" and predictions['USDJPY']['bias'] == "BULLISH"):
+            corr_note = "Inverse (typical)"
+            corr_color = "inverse"
+        else:
+            corr_note = "Mixed"
+            corr_color = "normal"
+        
+        st.metric("Correlation", corr_note)
+    
+    with col4:
+        # Best trade opportunity
+        best_trade = None
+        best_rr = 0
+        
+        for asset, rm in risk_management.items():
+            if rm['action'] != 'HOLD' and rm['confidence'] >= confidence_threshold and rm['risk_reward_1'] >= min_rr_ratio:
+                if rm['risk_reward_1'] > best_rr:
+                    best_rr = rm['risk_reward_1']
+                    best_trade = asset
+        
+        if best_trade:
+            st.metric("Best Opportunity", f"{best_trade} {risk_management[best_trade]['action']}",
+                     delta=f"RR: 1:{best_rr:.2f}")
+        else:
+            st.metric("Best Opportunity", "No clear signal")
+
+# ---------------- AUTO-REFRESH SCRIPT ----------------
+if auto_refresh:
+    time_since_refresh = (datetime.now(pytz.timezone('US/Eastern')) - st.session_state.last_refresh).seconds
+    time_left = interval_map[refresh_interval] - time_since_refresh
+    
+    if time_left > 0:
+        st.sidebar.info(f"⏰ Next refresh in: {time_left} seconds")
+    else:
+        refresh_data()
+
+# ---------------- FOOTER ----------------
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: #666; padding: 20px;'>
+    <p>🚀 AI-Powered M15 Gold & USD/JPY Trading System | Data updates every 15 minutes | Click REFRESH for latest data</p>
+    <p style='font-size: 12px;'>⚠️ This is for educational purposes only. Not financial advice. Always use proper risk management.</p>
+    <p style='font-size: 12px;'>🏆 Gold: GC=F | 💱 USD/JPY: JPY=X | Timeframe: M15</p>
+</div>
+""", unsafe_allow_html=True)
