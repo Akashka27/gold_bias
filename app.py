@@ -828,4 +828,184 @@ with col2:
             
             # Calculate trade setup
             trade_setup = calculate_trade_setup(daily_bias, m15_levels, USDJPY_TICKER, account_balance, risk_percent)
-            trade_setups['
+            trade_setups['USDJPY'] = trade_setup
+            
+            # Display Daily Bias Card
+            bias_class = daily_bias['bias'].lower()
+            if daily_bias['bias'] == "BULLISH":
+                bias_emoji = "🚀"
+            elif daily_bias['bias'] == "BEARISH":
+                bias_emoji = "📉"
+            else:
+                bias_emoji = "⏸️"
+            
+            st.markdown(f"""
+            <div class="neon-card daily-bias-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="timeframe-badge daily-badge">DAILY TIMEFRAME</span>
+                    <span class="timeframe-badge m15-badge">M15 EXECUTION</span>
+                </div>
+                <h2 class="forex-text">💱 USD/JPY DAILY BIAS</h2>
+                <div class="{bias_class}">{bias_emoji} {daily_bias['bias']} {bias_emoji}</div>
+                <p style="color: #888">Strength: {daily_bias['strength']} | Confidence: {daily_bias['confidence']:.1%}</p>
+                <p style="color: #888">Daily Range: {format_price(daily_bias['daily_high'], USDJPY_TICKER)} - {format_price(daily_bias['daily_low'], USDJPY_TICKER)}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Daily Signals
+            if daily_bias['signals']:
+                st.markdown("##### 📊 Daily AI Signals")
+                cols = st.columns(len(daily_bias['signals']))
+                for i, signal in enumerate(daily_bias['signals']):
+                    with cols[i]:
+                        st.info(signal)
+            
+            # M15 Levels
+            st.markdown("### 🎯 M15 Key Levels")
+            
+            m15_col1, m15_col2 = st.columns(2)
+            
+            with m15_col1:
+                st.markdown("##### 🟢 Support Levels")
+                if m15_levels['support']:
+                    for level in m15_levels['support']:
+                        st.markdown(f"""
+                        <div class="level-box support">
+                            <strong>{format_price(level['price'], USDJPY_TICKER)}</strong><br>
+                            <small>{level['distance_pips']:.1f} pips away</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("No nearby support")
+            
+            with m15_col2:
+                st.markdown("##### 🔴 Resistance Levels")
+                if m15_levels['resistance']:
+                    for level in m15_levels['resistance']:
+                        st.markdown(f"""
+                        <div class="level-box resistance">
+                            <strong>{format_price(level['price'], USDJPY_TICKER)}</strong><br>
+                            <small>{level['distance_pips']:.1f} pips away</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("No nearby resistance")
+            
+            # Trade Setup
+            st.markdown("### 💼 Trade Setup")
+            
+            if trade_setup['action'] != 'HOLD' and daily_bias['confidence'] >= confidence_threshold:
+                action_color = "#00ff9f" if trade_setup['action'] == "BUY" else "#ff4d4d"
+                
+                st.markdown(f"""
+                <div style="background: #1a1f2e; padding: 20px; border-radius: 10px; border-left: 4px solid {action_color};">
+                    <h3 style="color: {action_color}; margin:0">{trade_setup['action']} SIGNAL</h3>
+                    <p style="color: #888">{trade_setup['trade_rationale']}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Entry Zone
+                st.markdown(f"**Entry Zone:** {format_price(trade_setup['entry_zone'][0], USDJPY_TICKER)} - {format_price(trade_setup['entry_zone'][1], USDJPY_TICKER)}")
+                st.markdown(f"**Current Price:** {format_price(trade_setup['current_price'], USDJPY_TICKER)}")
+                
+                # Trade Levels
+                col_tp1, col_tp2, col_sl = st.columns(3)
+                with col_tp1:
+                    st.metric("Stop Loss", format_price(trade_setup['stop_loss'], USDJPY_TICKER))
+                with col_tp2:
+                    st.metric("Take Profit 1", format_price(trade_setup['take_profit_1'], USDJPY_TICKER))
+                with col_sl:
+                    st.metric("Take Profit 2", format_price(trade_setup['take_profit_2'], USDJPY_TICKER))
+                
+                # Position Sizing
+                st.markdown("##### 📊 Position Size")
+                col_ps1, col_ps2, col_ps3 = st.columns(3)
+                with col_ps1:
+                    st.metric("Size", trade_setup['position_size_units'])
+                with col_ps2:
+                    st.metric("Risk", f"${trade_setup['risk_amount']:.2f}")
+                with col_ps3:
+                    st.metric("RR Ratio", f"1:{trade_setup['risk_reward_1']:.2f}")
+                
+                # Alternative TP
+                if trade_setup['take_profit_alt']:
+                    st.info(f"🎯 Daily Target: {format_price(trade_setup['take_profit_alt'], USDJPY_TICKER)} (RR: 1:{trade_setup['tp_alt_rr']:.2f})")
+                
+                # Risk Info
+                st.markdown(f"""
+                <div style="margin-top: 10px;">
+                    <span class="risk-badge risk-medium">Stop Distance: {trade_setup['stop_distance_pips']:.1f} pips</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            elif daily_bias['bias'] == "SIDEWAYS":
+                st.warning("⏸️ Daily bias is sideways. Wait for clearer direction.")
+            elif daily_bias['confidence'] < confidence_threshold:
+                st.warning(f"⚠️ Daily confidence ({daily_bias['confidence']:.1%}) below threshold")
+            else:
+                st.info(f"⏸️ No {daily_bias['bias']} setup on M15. Wait for pullback to levels.")
+            
+            # M15 Chart
+            with st.expander("📈 M15 Price Chart"):
+                st.line_chart(m15_data['Close'].tail(50))
+
+# ---------------- SUMMARY SECTION ----------------
+if daily_predictions:
+    st.markdown("---")
+    st.markdown("## 📊 Daily Market Summary")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Gold Daily Bias", daily_predictions['GOLD']['bias'],
+                 delta=f"{daily_predictions['GOLD']['confidence']:.1%} confidence")
+    
+    with col2:
+        st.metric("USD/JPY Daily Bias", daily_predictions['USDJPY']['bias'],
+                 delta=f"{daily_predictions['USDJPY']['confidence']:.1%} confidence")
+    
+    with col3:
+        # Correlation based on daily bias
+        if daily_predictions['GOLD']['bias'] == daily_predictions['USDJPY']['bias']:
+            corr = "Same Direction"
+        elif (daily_predictions['GOLD']['bias'] == "BULLISH" and daily_predictions['USDJPY']['bias'] == "BEARISH") or \
+             (daily_predictions['GOLD']['bias'] == "BEARISH" and daily_predictions['USDJPY']['bias'] == "BULLISH"):
+            corr = "Inverse (Typical)"
+        else:
+            corr = "Mixed"
+        st.metric("Correlation", corr)
+    
+    with col4:
+        # Best setup
+        best_setup = None
+        best_rr = 0
+        for asset, setup in trade_setups.items():
+            if setup['action'] != 'HOLD' and setup.get('risk_reward_1', 0) > best_rr:
+                best_rr = setup['risk_reward_1']
+                best_setup = asset
+        
+        if best_setup:
+            st.metric("Best Setup", f"{best_setup} {trade_setups[best_setup]['action']}",
+                     delta=f"RR: 1:{best_rr:.2f}")
+        else:
+            st.metric("Best Setup", "No Setup")
+
+# ---------------- AUTO-REFRESH ----------------
+if auto_refresh:
+    time_since_refresh = (datetime.now(pytz.timezone('US/Eastern')) - st.session_state.last_refresh).seconds
+    time_left = interval_map[refresh_interval] - time_since_refresh
+    
+    if time_left > 0:
+        st.sidebar.info(f"⏰ Next refresh in: {time_left} seconds")
+    else:
+        refresh_data()
+
+# ---------------- FOOTER ----------------
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: #666; padding: 20px;'>
+    <p>🚀 AI Daily Bias Model + M15 Execution | Daily direction from ML model | M15 levels for entries</p>
+    <p style='font-size: 12px;'>⚠️ This is for educational purposes only. Not financial advice. Always use proper risk management.</p>
+    <p style='font-size: 12px;'>🏆 Gold: GC=F | 💱 USD/JPY: JPY=X | Daily Bias + M15 Execution</p>
+</div>
+""", unsafe_allow_html=True)
