@@ -299,7 +299,7 @@ def predict_bias_with_ai(data, ticker, models):
     """Use AI models to predict market bias"""
     df = calculate_m15_indicators(data)
     latest = df.iloc[-1]
-    previous = df.iloc[-2]
+    previous = df.iloc[-2] if len(df) > 1 else latest
     
     # Feature engineering for AI model
     features = {
@@ -394,19 +394,21 @@ def predict_bias_with_ai(data, ticker, models):
     if features['higher_high']:
         score += 1 * weights['higher_high']
         signals_used.append('Higher High')
+        total_weight += weights['higher_high']
     if features['lower_low']:
         score += -1 * weights['lower_low']
         signals_used.append('Lower Low')
-    total_weight += weights['higher_high'] + weights['lower_low']
+        total_weight += weights['lower_low']
     
     # Candlestick patterns
     if features['hammer']:
         score += 1 * weights['hammer']
         signals_used.append('Hammer Pattern')
+        total_weight += weights['hammer']
     if features['shooting_star']:
         score += -1 * weights['shooting_star']
         signals_used.append('Shooting Star')
-    total_weight += weights['hammer'] + weights['shooting_star']
+        total_weight += weights['shooting_star']
     
     # Calculate normalized score (-1 to 1)
     if total_weight > 0:
@@ -677,7 +679,8 @@ def calculate_risk_management(levels, prediction, ticker, account_balance=10000,
             'action': 'HOLD',
             'reason': 'Market is sideways',
             'levels': levels,
-            'bias': bias
+            'bias': bias,
+            'confidence': confidence
         }
     
     # Validate stop loss is reasonable
@@ -719,6 +722,7 @@ def calculate_risk_management(levels, prediction, ticker, account_balance=10000,
         'stop_distance_pips': stop_distance_pips,
         'stop_distance_pct': stop_distance_pct,
         'levels': levels,
+        'confidence': confidence,
         'asset_info': asset
     }
 
@@ -802,6 +806,4 @@ with st.sidebar:
     st.subheader("⏰ Market Hours")
     now = datetime.now(pytz.timezone('US/Eastern'))
     market_open = now.replace(hour=9, minute=30) <= now <= now.replace(hour=16, minute=0)
-    forex_24h = now.weekday() < 5  # Monday to Friday
-    
-    st.markdown(f"**Gold (COMEX):** {'🟢 Open' if market_open else
+    forex_24h = now.weekday() < 5  # Monday to
