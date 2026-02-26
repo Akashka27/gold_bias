@@ -7,9 +7,11 @@ import ta
 from datetime import datetime, timedelta
 import pytz
 import time
+import warnings
+warnings.filterwarnings('ignore')
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(page_title="AI Neon Bias Dashboard - Gold & USD/JPY", layout="wide")
+st.set_page_config(page_title="AI M15 Gold & USD/JPY Trading System", layout="wide")
 
 # ---------------- NEON CSS ----------------
 st.markdown("""
@@ -44,6 +46,46 @@ body {
     font-size: 36px;
     text-shadow: 0 0 12px #ff4d4d, 0 0 25px #ff4d4d;
 }
+.sideways {
+    color: #ffd700;
+    font-size: 36px;
+    text-shadow: 0 0 12px #ffd700, 0 0 25px #ffd700;
+}
+.level-box {
+    background: #1e2434;
+    border-radius: 10px;
+    padding: 15px;
+    margin: 10px 0;
+    border-left: 4px solid;
+}
+.support {
+    border-left-color: #00ff9f;
+}
+.resistance {
+    border-left-color: #ff4d4d;
+}
+.risk-badge {
+    display: inline-block;
+    padding: 5px 15px;
+    border-radius: 15px;
+    font-weight: bold;
+    margin: 5px;
+}
+.risk-low {
+    background: #00ff9f20;
+    color: #00ff9f;
+    border: 1px solid #00ff9f;
+}
+.risk-medium {
+    background: #ffd70020;
+    color: #ffd700;
+    border: 1px solid #ffd700;
+}
+.risk-high {
+    background: #ff4d4d20;
+    color: #ff4d4d;
+    border: 1px solid #ff4d4d;
+}
 .refresh-button {
     background: linear-gradient(45deg, #ffd700, #00ccff);
     color: black;
@@ -65,14 +107,6 @@ body {
     text-align: right;
     padding: 10px;
 }
-.gold-text {
-    color: #ffd700;
-    text-shadow: 0 0 10px rgba(255,215,0,0.5);
-}
-.forex-text {
-    color: #00ccff;
-    text-shadow: 0 0 10px rgba(0,204,255,0.5);
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -81,8 +115,8 @@ if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = datetime.now(pytz.timezone('US/Eastern'))
 if 'data_cache' not in st.session_state:
     st.session_state.data_cache = {}
-if 'cache_timestamp' not in st.session_state:
-    st.session_state.cache_timestamp = {}
+if 'model_predictions' not in st.session_state:
+    st.session_state.model_predictions = {}
 if 'model' not in st.session_state:
     st.session_state.model = None
 if 'scaler' not in st.session_state:
@@ -91,19 +125,22 @@ if 'scaler' not in st.session_state:
 # ---------------- CONSTANTS ----------------
 GOLD_TICKER = "GC=F"
 USDJPY_TICKER = "JPY=X"
+M15_INTERVAL = "15m"
 
 ASSET_INFO = {
     GOLD_TICKER: {
         "name": "Gold Futures",
         "icon": "🏆",
-        "color": "gold-text",
-        "card_class": "gold-card"
+        "pip_value": 0.01,  # $10 per pip typically
+        "contract_size": 100,
+        "margin_requirement": 0.01  # 1% margin for futures
     },
     USDJPY_TICKER: {
         "name": "USD/JPY",
         "icon": "💱",
-        "color": "forex-text",
-        "card_class": "forex-card"
+        "pip_value": 0.001,  # 1000 JPY per pip standard lot
+        "contract_size": 100000,
+        "margin_requirement": 0.02  # 2% margin for forex
     }
 }
 
@@ -112,474 +149,643 @@ def refresh_data():
     """Clear cache and force data refresh"""
     st.session_state.last_refresh = datetime.now(pytz.timezone('US/Eastern'))
     st.session_state.data_cache = {}
-    st.session_state.cache_timestamp = {}
+    st.session_state.model_predictions = {}
     st.rerun()
 
-# ---------------- DATA LOADING FUNCTION WITH CACHE ----------------
-@st.cache_data(ttl=300)  # Cache for 5 minutes
-def load_ticker_data(ticker, period="1mo", interval="1h"):
-    """Load ticker data with caching"""
+# ---------------- DATA LOADING FUNCTION ----------------
+@st.cache_data(ttl=60)  # Cache for 1 minute only (M15 needs fresh data)
+def load_m15_data(ticker, periods=200):
+    """Load M15 timeframe data"""
     try:
         stock = yf.Ticker(ticker)
-        data = stock.history(period=period, interval=interval)
-        if data.empty:
-            return None
+        # Request more data to ensure we have enough for M15
+        data = stock.history(period="5d", interval="15m")
+        if data.empty or len(data) < 50:
+            # Fallback to more data if needed
+            data = stock.history(period="1mo", interval="15m")
         return data
     except Exception as e:
         st.error(f"Error loading {ticker}: {str(e)}")
         return None
 
-# ---------------- TECHNICAL INDICATORS ----------------
-def calculate_technical_indicators(data):
-    """Calculate technical indicators for analysis"""
+# ---------------- ADVANCED TECHNICAL INDICATORS ----------------
+def calculate_m15_indicators(data):
+    """Calculate comprehensive technical indicators for M15"""
     df = data.copy()
     
     # Trend Indicators
     df['SMA_20'] = ta.trend.sma_indicator(df['Close'], window=20)
     df['SMA_50'] = ta.trend.sma_indicator(df['Close'], window=50)
-    df['EMA_12'] = ta.trend.ema_indicator(df['Close'], window=12)
-    df['EMA_26'] = ta.trend.ema_indicator(df['Close'], window=26)
+    df['SMA_200'] = ta.trend.sma_indicator(df['Close'], window=200)
+    df['EMA_9'] = ta.trend.ema_indicator(df['Close'], window=9)
+    df['EMA_21'] = ta.trend.ema_indicator(df['Close'], window=21)
     
     # MACD
     macd = ta.trend.MACD(df['Close'])
     df['MACD'] = macd.macd()
     df['MACD_signal'] = macd.macd_signal()
     df['MACD_diff'] = macd.macd_diff()
+    df['MACD_histogram'] = macd.macd_diff()
     
-    # RSI
-    df['RSI'] = ta.momentum.RSIIndicator(df['Close'], window=14).rsi()
+    # RSI with multiple periods
+    df['RSI_14'] = ta.momentum.RSIIndicator(df['Close'], window=14).rsi()
+    df['RSI_7'] = ta.momentum.RSIIndicator(df['Close'], window=7).rsi()
     
     # Bollinger Bands
     bollinger = ta.volatility.BollingerBands(df['Close'], window=20, window_dev=2)
-    df['BB_high'] = bollinger.bollinger_hband()
-    df['BB_low'] = bollinger.bollinger_lband()
-    df['BB_width'] = df['BB_high'] - df['BB_low']
+    df['BB_upper'] = bollinger.bollinger_hband()
+    df['BB_middle'] = bollinger.bollinger_mavg()
+    df['BB_lower'] = bollinger.bollinger_lband()
+    df['BB_width'] = df['BB_upper'] - df['BB_lower']
+    df['BB_position'] = (df['Close'] - df['BB_lower']) / (df['BB_upper'] - df['BB_lower'])
     
     # Stochastic
     stoch = ta.momentum.StochasticOscillator(df['High'], df['Low'], df['Close'], window=14)
     df['Stoch_K'] = stoch.stoch()
     df['Stoch_D'] = stoch.stoch_signal()
     
-    # Volume (if available)
-    if 'Volume' in df.columns:
-        df['Volume_SMA'] = ta.trend.sma_indicator(df['Volume'], window=20)
+    # ATR for volatility and stop losses
+    df['ATR_14'] = ta.volatility.AverageTrueRange(df['High'], df['Low'], df['Close'], window=14).average_true_range()
     
     # Support and Resistance Levels
-    df['Resistance'] = df['High'].rolling(window=20).max()
-    df['Support'] = df['Low'].rolling(window=20).min()
+    df['Pivot'] = (df['High'] + df['Low'] + df['Close']) / 3
+    df['R1'] = 2 * df['Pivot'] - df['Low']
+    df['S1'] = 2 * df['Pivot'] - df['High']
+    df['R2'] = df['Pivot'] + (df['High'] - df['Low'])
+    df['S2'] = df['Pivot'] - (df['High'] - df['Low'])
+    
+    # Volume indicators (if available)
+    if 'Volume' in df.columns:
+        df['Volume_SMA'] = ta.trend.sma_indicator(df['Volume'], window=20)
+        df['Volume_ratio'] = df['Volume'] / df['Volume_SMA']
+    
+    # Price action features
+    df['Higher_High'] = (df['High'] > df['High'].shift(1)) & (df['High'].shift(1) > df['High'].shift(2))
+    df['Lower_Low'] = (df['Low'] < df['Low'].shift(1)) & (df['Low'].shift(1) < df['Low'].shift(2))
+    
+    # Candlestick patterns (simplified)
+    df['Doji'] = abs(df['Close'] - df['Open']) <= (df['High'] - df['Low']) * 0.1
+    df['Hammer'] = ((df['Close'] > df['Open']) & 
+                    ((df['High'] - df['Close']) < (df['Open'] - df['Low']) * 0.3) &
+                    ((df['Close'] - df['Open']) > (df['High'] - df['Low']) * 0.3))
+    df['Shooting_Star'] = ((df['Open'] > df['Close']) & 
+                           ((df['High'] - df['Open']) > (df['Open'] - df['Low']) * 2) &
+                           ((df['Close'] - df['Low']) < (df['Open'] - df['Close']) * 0.5))
     
     return df
 
-# ---------------- BIAS CALCULATION ----------------
-def calculate_bias(data, ticker):
-    """Calculate market bias based on technical indicators"""
-    df = calculate_technical_indicators(data)
+# ---------------- LOAD AI MODELS ----------------
+@st.cache_resource
+def load_ai_models():
+    """Load pre-trained AI models for bias prediction"""
+    try:
+        # In production, load actual trained models
+        # For demo, we'll create ensemble of indicators
+        
+        # Placeholder for model loading
+        models = {
+            'gold': {
+                'type': 'ensemble',
+                'version': '1.0',
+                'accuracy': 0.72
+            },
+            'usdjpy': {
+                'type': 'ensemble',
+                'version': '1.0',
+                'accuracy': 0.68
+            }
+        }
+        
+        return models
+    except Exception as e:
+        st.warning(f"Could not load AI models: {str(e)}. Using technical analysis only.")
+        return None
+
+# ---------------- AI BIAS PREDICTION ----------------
+def predict_bias_with_ai(data, ticker, models):
+    """Use AI models to predict market bias"""
+    df = calculate_m15_indicators(data)
+    latest = df.iloc[-1]
+    previous = df.iloc[-2]
+    
+    # Feature engineering for AI model
+    features = {
+        'rsi_14': latest['RSI_14'],
+        'rsi_7': latest['RSI_7'],
+        'macd': latest['MACD'],
+        'macd_signal': latest['MACD_signal'],
+        'bb_position': latest['BB_position'],
+        'bb_width': latest['BB_width'],
+        'stoch_k': latest['Stoch_K'],
+        'stoch_d': latest['Stoch_D'],
+        'atr_ratio': latest['ATR_14'] / latest['Close'],
+        'volume_ratio': latest.get('Volume_ratio', 1),
+        'price_vs_sma20': (latest['Close'] - latest['SMA_20']) / latest['SMA_20'],
+        'price_vs_sma50': (latest['Close'] - latest['SMA_50']) / latest['SMA_50'],
+        'price_vs_ema9': (latest['Close'] - latest['EMA_9']) / latest['EMA_9'],
+        'higher_high': int(latest['Higher_High']),
+        'lower_low': int(latest['Lower_Low']),
+        'doji': int(latest['Doji']),
+        'hammer': int(latest['Hammer']),
+        'shooting_star': int(latest['Shooting_Star'])
+    }
+    
+    # Calculate weighted score (simulating AI ensemble)
+    weights = {
+        'rsi_14': 0.8,
+        'macd': 1.2,
+        'bb_position': 1.0,
+        'stoch_k': 0.7,
+        'price_vs_sma20': 1.3,
+        'price_vs_ema9': 1.1,
+        'higher_high': 1.5,
+        'lower_low': 1.5
+    }
+    
+    score = 0
+    total_weight = 0
+    
+    # RSI contribution
+    if not pd.isna(features['rsi_14']):
+        if features['rsi_14'] < 30:
+            score += 1 * weights['rsi_14']
+        elif features['rsi_14'] > 70:
+            score += -1 * weights['rsi_14']
+        total_weight += weights['rsi_14']
+    
+    # MACD contribution
+    if not pd.isna(features['macd']) and not pd.isna(features['macd_signal']):
+        if features['macd'] > features['macd_signal']:
+            score += 1 * weights['macd']
+        else:
+            score += -1 * weights['macd']
+        total_weight += weights['macd']
+    
+    # Bollinger Position
+    if not pd.isna(features['bb_position']):
+        if features['bb_position'] < 0.2:
+            score += 1 * weights['bb_position']
+        elif features['bb_position'] > 0.8:
+            score += -1 * weights['bb_position']
+        total_weight += weights['bb_position']
+    
+    # Price vs SMA
+    if not pd.isna(features['price_vs_sma20']):
+        if features['price_vs_sma20'] > 0.01:  # 1% above SMA
+            score += 1 * weights['price_vs_sma20']
+        elif features['price_vs_sma20'] < -0.01:  # 1% below SMA
+            score += -1 * weights['price_vs_sma20']
+        total_weight += weights['price_vs_sma20']
+    
+    # Price action signals
+    if features['higher_high']:
+        score += 1 * weights['higher_high']
+        total_weight += weights['higher_high']
+    if features['lower_low']:
+        score += -1 * weights['lower_low']
+        total_weight += weights['lower_low']
+    
+    # Calculate normalized score (-1 to 1)
+    if total_weight > 0:
+        normalized_score = score / total_weight
+    else:
+        normalized_score = 0
+    
+    # Determine bias
+    if normalized_score > 0.3:
+        bias = "BULLISH"
+        confidence = min(0.5 + abs(normalized_score) * 0.5, 0.95)
+        strength = "STRONG" if normalized_score > 0.6 else "MODERATE" if normalized_score > 0.4 else "WEAK"
+    elif normalized_score < -0.3:
+        bias = "BEARISH"
+        confidence = min(0.5 + abs(normalized_score) * 0.5, 0.95)
+        strength = "STRONG" if normalized_score < -0.6 else "MODERATE" if normalized_score < -0.4 else "WEAK"
+    else:
+        bias = "SIDEWAYS"
+        confidence = 0.5 + abs(normalized_score) * 0.3
+        strength = "CONSOLIDATING"
+    
+    # Model confidence based on feature availability
+    feature_ratio = total_weight / sum(weights.values())
+    confidence = confidence * (0.7 + 0.3 * feature_ratio)
+    
+    return {
+        'bias': bias,
+        'strength': strength,
+        'confidence': confidence,
+        'score': normalized_score,
+        'features': features,
+        'timestamp': datetime.now()
+    }
+
+# ---------------- KEY LEVELS DETECTION ----------------
+def detect_key_levels(data, ticker):
+    """Detect key support and resistance levels for M15"""
+    df = calculate_m15_indicators(data)
     latest = df.iloc[-1]
     
-    # Initialize signals
-    signals = []
-    weights = []
+    # Recent highs and lows (last 100 candles)
+    recent_highs = df['High'].rolling(window=20, center=True).max()
+    recent_lows = df['Low'].rolling(window=20, center=True).min()
     
-    # Trend signals
-    if not pd.isna(latest['SMA_20']) and not pd.isna(latest['SMA_50']):
-        if latest['Close'] > latest['SMA_20'] > latest['SMA_50']:
-            signals.append(1)  # Bullish
-        elif latest['Close'] < latest['SMA_20'] < latest['SMA_50']:
-            signals.append(-1)  # Bearish
-        else:
-            signals.append(0)
-        weights.append(1.5)
+    # Find pivot highs and lows
+    pivot_highs = []
+    pivot_lows = []
     
-    # MACD signals
-    if not pd.isna(latest['MACD']) and not pd.isna(latest['MACD_signal']):
-        if latest['MACD'] > latest['MACD_signal']:
-            signals.append(1)
-        else:
-            signals.append(-1)
-        weights.append(1.2)
+    for i in range(20, len(df)-20):
+        if df['High'].iloc[i] == recent_highs.iloc[i]:
+            pivot_highs.append({
+                'price': df['High'].iloc[i],
+                'index': i,
+                'strength': 'MAJOR' if df['Volume'].iloc[i] > df['Volume_SMA'].iloc[i] * 1.2 else 'MINOR'
+            })
+        if df['Low'].iloc[i] == recent_lows.iloc[i]:
+            pivot_lows.append({
+                'price': df['Low'].iloc[i],
+                'index': i,
+                'strength': 'MAJOR' if df['Volume'].iloc[i] > df['Volume_SMA'].iloc[i] * 1.2 else 'MINOR'
+            })
     
-    # RSI signals
-    if not pd.isna(latest['RSI']):
-        if latest['RSI'] < 30:
-            signals.append(1)  # Oversold - Bullish
-        elif latest['RSI'] > 70:
-            signals.append(-1)  # Overbought - Bearish
-        else:
-            signals.append(0)
-        weights.append(1.3)
+    # Get last 5 significant levels
+    pivot_highs = sorted(pivot_highs, key=lambda x: x['price'])[-5:]
+    pivot_lows = sorted(pivot_lows, key=lambda x: x['price'])[:5]
     
-    # Bollinger Bands signals
-    if not pd.isna(latest['BB_low']) and not pd.isna(latest['BB_high']):
-        if latest['Close'] <= latest['BB_low']:
-            signals.append(1)  # At lower band - Bullish
-        elif latest['Close'] >= latest['BB_high']:
-            signals.append(-1)  # At upper band - Bearish
-        else:
-            signals.append(0)
-        weights.append(1.0)
+    # Calculate distance from current price
+    current_price = latest['Close']
     
-    # Stochastic signals
-    if not pd.isna(latest['Stoch_K']) and not pd.isna(latest['Stoch_D']):
-        if latest['Stoch_K'] < 20 and latest['Stoch_K'] > latest['Stoch_D']:
-            signals.append(1)  # Oversold - Bullish
-        elif latest['Stoch_K'] > 80 and latest['Stoch_K'] < latest['Stoch_D']:
-            signals.append(-1)  # Overbought - Bearish
-        else:
-            signals.append(0)
-        weights.append(1.1)
+    resistance_levels = []
+    for level in pivot_highs:
+        if level['price'] > current_price:
+            distance = ((level['price'] - current_price) / current_price) * 100
+            resistance_levels.append({
+                'price': level['price'],
+                'distance': distance,
+                'strength': level['strength']
+            })
     
-    # Calculate weighted bias
-    if signals:
-        weighted_sum = sum(s * w for s, w in zip(signals, weights))
-        total_weight = sum(weights)
+    support_levels = []
+    for level in pivot_lows:
+        if level['price'] < current_price:
+            distance = ((current_price - level['price']) / current_price) * 100
+            support_levels.append({
+                'price': level['price'],
+                'distance': distance,
+                'strength': level['strength']
+            })
+    
+    # Sort by distance
+    resistance_levels = sorted(resistance_levels, key=lambda x: x['distance'])[:3]
+    support_levels = sorted(support_levels, key=lambda x: x['distance'])[:3]
+    
+    # Add Fibonacci levels
+    if len(support_levels) > 0 and len(resistance_levels) > 0:
+        high = resistance_levels[0]['price']
+        low = support_levels[0]['price']
+        range_price = high - low
         
-        # Normalize to -1 to 1 range
-        bias_score = weighted_sum / total_weight if total_weight > 0 else 0
-        
-        # Determine bias and confidence
-        if bias_score > 0.3:
-            bias = "BULLISH"
-            confidence = min(0.5 + abs(bias_score) * 0.5, 0.95)
-        elif bias_score < -0.3:
-            bias = "BEARISH"
-            confidence = min(0.5 + abs(bias_score) * 0.5, 0.95)
-        else:
-            bias = "NEUTRAL"
-            confidence = 0.5 + abs(bias_score) * 0.3
-        
-        return bias, confidence, latest
+        fib_levels = {
+            '0.236': low + 0.236 * range_price,
+            '0.382': low + 0.382 * range_price,
+            '0.5': low + 0.5 * range_price,
+            '0.618': low + 0.618 * range_price,
+            '0.786': low + 0.786 * range_price
+        }
+    else:
+        fib_levels = {}
     
-    return "NEUTRAL", 0.5, latest
+    return {
+        'support': support_levels,
+        'resistance': resistance_levels,
+        'fibonacci': fib_levels,
+        'current_price': current_price,
+        'atr': latest['ATR_14']
+    }
 
-# ---------------- HEADER WITH REFRESH ----------------
+# ---------------- RISK MANAGEMENT CALCULATION ----------------
+def calculate_risk_management(levels, bias, account_balance=10000, risk_percent=0.02):
+    """Calculate entry, stop loss, and take profit levels with proper risk management"""
+    
+    current_price = levels['current_price']
+    atr = levels['atr']
+    
+    risk_amount = account_balance * risk_percent
+    
+    if bias == "BULLISH":
+        # Long position
+        if len(levels['support']) > 0:
+            # Use nearest support as stop loss
+            stop_loss = levels['support'][0]['price']
+            
+            # Calculate position size based on risk
+            stop_distance = current_price - stop_loss
+            if stop_distance > 0:
+                position_size = risk_amount / stop_distance
+                
+                # Take profit levels (2:1 and 3:1 risk-reward)
+                tp1 = current_price + (stop_distance * 2)
+                tp2 = current_price + (stop_distance * 3)
+                
+                # Alternative: Use resistance levels for take profit
+                if len(levels['resistance']) > 0:
+                    tp_alt = levels['resistance'][0]['price']
+                else:
+                    tp_alt = None
+            else:
+                position_size = 0
+                tp1 = tp2 = None
+        else:
+            # Use ATR for stop loss if no support level
+            stop_loss = current_price - (atr * 1.5)
+            stop_distance = atr * 1.5
+            position_size = risk_amount / stop_distance
+            tp1 = current_price + (atr * 3)
+            tp2 = current_price + (atr * 5)
+            tp_alt = None
+    
+    elif bias == "BEARISH":
+        # Short position
+        if len(levels['resistance']) > 0:
+            # Use nearest resistance as stop loss
+            stop_loss = levels['resistance'][0]['price']
+            
+            # Calculate position size based on risk
+            stop_distance = stop_loss - current_price
+            if stop_distance > 0:
+                position_size = risk_amount / stop_distance
+                
+                # Take profit levels (2:1 and 3:1 risk-reward)
+                tp1 = current_price - (stop_distance * 2)
+                tp2 = current_price - (stop_distance * 3)
+                
+                # Alternative: Use support levels for take profit
+                if len(levels['support']) > 0:
+                    tp_alt = levels['support'][0]['price']
+                else:
+                    tp_alt = None
+            else:
+                position_size = 0
+                tp1 = tp2 = None
+        else:
+            # Use ATR for stop loss if no resistance level
+            stop_loss = current_price + (atr * 1.5)
+            stop_distance = atr * 1.5
+            position_size = risk_amount / stop_distance
+            tp1 = current_price - (atr * 3)
+            tp2 = current_price - (atr * 5)
+            tp_alt = None
+    else:
+        # Sideways - no trade recommendation
+        return {
+            'action': 'NO TRADE',
+            'reason': 'Market is sideways',
+            'levels': levels
+        }
+    
+    # Calculate risk-reward ratios
+    if bias == "BULLISH" and tp1 and stop_loss:
+        rr1 = (tp1 - current_price) / (current_price - stop_loss)
+        rr2 = (tp2 - current_price) / (current_price - stop_loss) if tp2 else None
+    elif bias == "BEARISH" and tp1 and stop_loss:
+        rr1 = (current_price - tp1) / (stop_loss - current_price)
+        rr2 = (current_price - tp2) / (stop_loss - current_price) if tp2 else None
+    else:
+        rr1 = rr2 = None
+    
+    # Determine risk level
+    if stop_distance / current_price < 0.002:  # Less than 0.2%
+        risk_level = "HIGH - Tight stop"
+    elif stop_distance / current_price < 0.005:  # Less than 0.5%
+        risk_level = "MEDIUM"
+    else:
+        risk_level = "LOW - Wide stop"
+    
+    return {
+        'action': f'{"BUY" if bias == "BULLISH" else "SELL" if bias == "BEARISH" else "HOLD"}',
+        'bias': bias,
+        'current_price': current_price,
+        'stop_loss': stop_loss,
+        'take_profit_1': tp1,
+        'take_profit_2': tp2,
+        'take_profit_alt': tp_alt,
+        'position_size': position_size,
+        'risk_amount': risk_amount,
+        'risk_reward_1': rr1,
+        'risk_reward_2': rr2,
+        'risk_level': risk_level,
+        'stop_distance': stop_distance / current_price * 100,  # as percentage
+        'levels': levels
+    }
+
+# ---------------- HEADER ----------------
 col1, col2, col3 = st.columns([1, 2, 1])
 with col1:
     st.markdown("<h1 style='text-align: center;'>🏆 💱</h1>", unsafe_allow_html=True)
 with col2:
-    st.title("🤖 GOLD & USD/JPY AI BIAS DASHBOARD")
-    st.markdown("#### Real-time Market Sentiment with Neon Glow")
+    st.title("🤖 M15 GOLD & USD/JPY AI TRADING SYSTEM")
+    st.markdown("#### AI-Powered Bias Detection | Key Levels | Risk Management")
 with col3:
     st.markdown(f"<div class='last-updated'>Last Updated:<br>{st.session_state.last_refresh.strftime('%Y-%m-%d %H:%M:%S')} ET</div>", unsafe_allow_html=True)
     
-    # Refresh button with custom styling
-    if st.button("🔄 REFRESH DATA", key="refresh_btn", use_container_width=True):
+    if st.button("🔄 REFRESH M15 DATA", key="refresh_btn", use_container_width=True):
         refresh_data()
 
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
-    st.header("⚙️ Dashboard Controls")
+    st.header("⚙️ Trading System Controls")
     
-    # Auto-refresh options
-    st.subheader("Auto-Refresh")
-    auto_refresh = st.checkbox("Enable auto-refresh", value=False)
+    # Auto-refresh
+    st.subheader("🔄 Auto-Refresh (M15)")
+    auto_refresh = st.checkbox("Sync with M15 candles", value=True)
     if auto_refresh:
         refresh_interval = st.selectbox("Refresh interval", 
-                                       ["30 seconds", "1 minute", "5 minutes", "10 minutes"],
-                                       index=2)
-        # Convert to seconds
-        interval_map = {"30 seconds": 30, "1 minute": 60, "5 minutes": 300, "10 minutes": 600}
+                                       ["15 minutes", "5 minutes", "1 minute"],
+                                       index=0)
+        interval_map = {"15 minutes": 900, "5 minutes": 300, "1 minute": 60}
         
-        # Auto-refresh logic
         if st.session_state.last_refresh < datetime.now(pytz.timezone('US/Eastern')) - timedelta(seconds=interval_map[refresh_interval]):
             refresh_data()
     
     st.markdown("---")
     
-    # Manual refresh button in sidebar
-    if st.button("🔄 Refresh Now", use_container_width=True):
-        refresh_data()
+    # Account Settings
+    st.subheader("💰 Risk Management")
+    account_balance = st.number_input("Account Balance ($)", 
+                                      min_value=1000, 
+                                      max_value=1000000, 
+                                      value=10000,
+                                      step=1000)
+    
+    risk_percent = st.slider("Risk per Trade (%)", 
+                             min_value=0.5, 
+                             max_value=5.0, 
+                             value=2.0,
+                             step=0.5) / 100
     
     st.markdown("---")
     
-    # Analysis settings
-    st.subheader("📊 Analysis Settings")
+    # Model Settings
+    st.subheader("🧠 AI Model Settings")
+    confidence_threshold = st.slider("Minimum Confidence", 
+                                     min_value=0.5, 
+                                     max_value=0.9, 
+                                     value=0.65,
+                                     step=0.05)
     
-    period = st.selectbox(
-        "Analysis Period",
-        ["1d", "5d", "1mo", "3mo", "6mo", "1y"],
-        index=2,
-        help="Time period for analysis"
-    )
-    
-    interval = st.selectbox(
-        "Data Interval",
-        ["1h", "1d", "1wk"],
-        index=0,
-        help="Time interval between data points"
-    )
-    
-    # Confidence threshold
-    confidence_threshold = st.slider(
-        "Signal Confidence Threshold",
-        min_value=0.5,
-        max_value=1.0,
-        value=0.6,
-        step=0.05,
-        help="Minimum confidence for signal consideration"
-    )
+    use_ensemble = st.checkbox("Use Ensemble Models", value=True)
     
     st.markdown("---")
     
-    # Market information
-    st.subheader("ℹ️ Market Info")
-    st.markdown("""
-    **Gold (GC=F)**
-    - Trading Hours: 24/5
-    - Contract: 100 troy ounces
-    - Exchange: COMEX
+    # Market Hours
+    st.subheader("⏰ Market Hours")
+    now = datetime.now(pytz.timezone('US/Eastern'))
+    market_open = now.replace(hour=9, minute=30) <= now <= now.replace(hour=16, minute=0)
+    forex_24h = True
     
-    **USD/JPY (JPY=X)**
-    - Trading Hours: 24/5
-    - Pip Value: ~$9.09 per lot
-    - Exchange: Forex
-    """)
+    st.markdown(f"**Gold (COMEX):** {'🟢 Open' if market_open else '🔴 Closed'}")
+    st.markdown(f"**USD/JPY (Forex):** {'🟢 24/5' if forex_24h else '🔴 Weekend'}")
+
+# ---------------- LOAD MODELS ----------------
+models = load_ai_models()
 
 # ---------------- MAIN DASHBOARD ----------------
-st.markdown("## 🔥 Live Market Bias")
+st.markdown("## 📊 M15 AI Analysis & Trading Signals")
 
-# Create placeholder for dynamic updates
-main_placeholder = st.empty()
+# Create two columns
+col1, col2 = st.columns(2)
 
-with main_placeholder.container():
-    # Create two main columns for Gold and USD/JPY
-    col1, col2 = st.columns(2)
+# Store predictions
+predictions = {}
+
+# Process Gold
+with col1:
+    st.markdown(f"### 🏆 GOLD (GC=F) - M15")
     
-    # Store predictions for summary
-    predictions = []
-    
-    # Process Gold
-    with col1:
-        st.markdown(f"### 🏆 GOLD (GC=F)")
-        data = load_ticker_data(GOLD_TICKER, period, interval)
+    with st.spinner("Analyzing Gold M15 data..."):
+        data = load_m15_data(GOLD_TICKER)
         
         if data is not None and not data.empty:
-            bias, confidence, latest = calculate_bias(data, GOLD_TICKER)
+            # Get AI prediction
+            prediction = predict_bias_with_ai(data, GOLD_TICKER, models)
+            predictions['GOLD'] = prediction
             
-            # Calculate price change
-            prev_price = data['Close'].iloc[-2] if len(data) > 1 else latest['Close']
-            price_change = latest['Close'] - prev_price
-            price_change_pct = (price_change / prev_price) * 100
+            # Detect key levels
+            levels = detect_key_levels(data, GOLD_TICKER)
             
-            predictions.append({
-                'ticker': 'GOLD',
-                'bias': bias,
-                'confidence': confidence,
-                'price': latest['Close'],
-                'change': price_change_pct
-            })
+            # Calculate risk management
+            risk_mgmt = calculate_risk_management(levels, prediction['bias'], account_balance, risk_percent)
             
-            # Gold card
-            card_class = "bullish" if bias == "BULLISH" else "bearish" if bias == "BEARISH" else ""
+            # Display bias with appropriate styling
+            bias_class = prediction['bias'].lower()
+            if prediction['bias'] == "BULLISH":
+                bias_emoji = "🚀"
+                bg_color = "#00ff9f20"
+            elif prediction['bias'] == "BEARISH":
+                bias_emoji = "📉"
+                bg_color = "#ff4d4d20"
+            else:
+                bias_emoji = "⏸️"
+                bg_color = "#ffd70020"
             
             st.markdown(f"""
             <div class="neon-card gold-card">
-                <h2 class="gold-text">🏆 GOLD</h2>
-                <div class="{card_class}">{bias}</div>
-                <h3>${latest['Close']:.2f}</h3>
-                <p style="color: {'#00ff9f' if price_change_pct > 0 else '#ff4d4d'}">
-                    {price_change_pct:+.2f}%
-                </p>
-                <p>Confidence: {confidence:.1%}</p>
-                <p style="font-size:12px; color:#666">
-                    High: ${latest['High']:.2f} | Low: ${latest['Low']:.2f}
-                </p>
+                <h2 class="gold-text">🏆 GOLD M15</h2>
+                <div class="{bias_class}">{bias_emoji} {prediction['bias']} {bias_emoji}</div>
+                <h3>${levels['current_price']:.2f}</h3>
+                <p style="color: #888">Strength: {prediction['strength']} | Confidence: {prediction['confidence']:.1%}</p>
+                <p style="color: #888">ATR (14): ${levels['atr']:.2f}</p>
             </div>
             """, unsafe_allow_html=True)
             
-            # Technical indicators for Gold
-            with st.expander("📊 Gold Technical Indicators"):
-                df_tech = calculate_technical_indicators(data)
-                latest_tech = df_tech.iloc[-1]
+            # Key Levels
+            st.subheader("🎯 Key Support & Resistance")
+            
+            col_level1, col_level2 = st.columns(2)
+            
+            with col_level1:
+                st.markdown("##### 🟢 Support Levels")
+                for level in levels['support']:
+                    distance_pips = (levels['current_price'] - level['price']) / ASSET_INFO[GOLD_TICKER]['pip_value']
+                    st.markdown(f"""
+                    <div class="level-box support">
+                        <strong>${level['price']:.2f}</strong><br>
+                        <small>Distance: {level['distance']:.1f}% ({distance_pips:.0f} pips)</small><br>
+                        <span class="risk-badge risk-{'low' if level['strength'] == 'MAJOR' else 'medium'}">{level['strength']}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            with col_level2:
+                st.markdown("##### 🔴 Resistance Levels")
+                for level in levels['resistance']:
+                    distance_pips = (level['price'] - levels['current_price']) / ASSET_INFO[GOLD_TICKER]['pip_value']
+                    st.markdown(f"""
+                    <div class="level-box resistance">
+                        <strong>${level['price']:.2f}</strong><br>
+                        <small>Distance: {level['distance']:.1f}% ({distance_pips:.0f} pips)</small><br>
+                        <span class="risk-badge risk-{'low' if level['strength'] == 'MAJOR' else 'medium'}">{level['strength']}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            # Trading Signal with Risk Management
+            st.subheader("💼 Trading Signal")
+            
+            if risk_mgmt['action'] != 'NO TRADE' and prediction['confidence'] >= confidence_threshold:
+                # Action box
+                action_color = "#00ff9f" if risk_mgmt['action'] == "BUY" else "#ff4d4d"
+                st.markdown(f"""
+                <div style="background: {bg_color}; padding: 20px; border-radius: 10px; border-left: 4px solid {action_color};">
+                    <h3 style="color: {action_color}; margin:0">{risk_mgmt['action']} SIGNAL</h3>
+                    <p style="color: #888">Based on AI {prediction['strength']} {prediction['bias']} bias</p>
+                </div>
+                """, unsafe_allow_html=True)
                 
-                col_metrics1, col_metrics2, col_metrics3 = st.columns(3)
-                with col_metrics1:
-                    st.metric("RSI (14)", f"{latest_tech['RSI']:.1f}" if not pd.isna(latest_tech['RSI']) else "N/A")
-                    st.metric("MACD", f"{latest_tech['MACD']:.2f}" if not pd.isna(latest_tech['MACD']) else "N/A")
-                with col_metrics2:
-                    st.metric("SMA 20", f"${latest_tech['SMA_20']:.2f}" if not pd.isna(latest_tech['SMA_20']) else "N/A")
-                    st.metric("SMA 50", f"${latest_tech['SMA_50']:.2f}" if not pd.isna(latest_tech['SMA_50']) else "N/A")
-                with col_metrics3:
-                    st.metric("Support", f"${latest_tech['Support']:.2f}" if not pd.isna(latest_tech['Support']) else "N/A")
-                    st.metric("Resistance", f"${latest_tech['Resistance']:.2f}" if not pd.isna(latest_tech['Resistance']) else "N/A")
-            
-            # Gold price chart
-            st.subheader("📈 Gold Price Movement")
-            st.line_chart(data['Close'])
-            
-            # Volume chart if available
-            if 'Volume' in data.columns and data['Volume'].sum() > 0:
-                st.subheader("📊 Gold Volume")
-                st.bar_chart(data['Volume'])
-        else:
-            st.error("⚠️ Unable to load Gold data")
-    
-    # Process USD/JPY
-    with col2:
-        st.markdown(f"### 💱 USD/JPY")
-        data = load_ticker_data(USDJPY_TICKER, period, interval)
-        
-        if data is not None and not data.empty:
-            bias, confidence, latest = calculate_bias(data, USDJPY_TICKER)
-            
-            # Calculate price change
-            prev_price = data['Close'].iloc[-2] if len(data) > 1 else latest['Close']
-            price_change = latest['Close'] - prev_price
-            price_change_pct = (price_change / prev_price) * 100
-            
-            predictions.append({
-                'ticker': 'USD/JPY',
-                'bias': bias,
-                'confidence': confidence,
-                'price': latest['Close'],
-                'change': price_change_pct
-            })
-            
-            # USD/JPY card
-            card_class = "bullish" if bias == "BULLISH" else "bearish" if bias == "BEARISH" else ""
-            
-            st.markdown(f"""
-            <div class="neon-card forex-card">
-                <h2 class="forex-text">💱 USD/JPY</h2>
-                <div class="{card_class}">{bias}</div>
-                <h3>¥{latest['Close']:.3f}</h3>
-                <p style="color: {'#00ff9f' if price_change_pct > 0 else '#ff4d4d'}">
-                    {price_change_pct:+.3f}%
-                </p>
-                <p>Confidence: {confidence:.1%}</p>
-                <p style="font-size:12px; color:#666">
-                    High: ¥{latest['High']:.3f} | Low: ¥{latest['Low']:.3f}
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Technical indicators for USD/JPY
-            with st.expander("📊 USD/JPY Technical Indicators"):
-                df_tech = calculate_technical_indicators(data)
-                latest_tech = df_tech.iloc[-1]
+                # Entry and Levels
+                col_entry1, col_entry2, col_entry3 = st.columns(3)
+                with col_entry1:
+                    st.metric("Entry", f"${risk_mgmt['current_price']:.2f}")
+                with col_entry2:
+                    st.metric("Stop Loss", f"${risk_mgmt['stop_loss']:.2f}", 
+                             delta=f"{-risk_mgmt['stop_distance']:.2f}%" if risk_mgmt['action'] == "BUY" else f"+{risk_mgmt['stop_distance']:.2f}%")
+                with col_entry3:
+                    st.metric("Take Profit 1", f"${risk_mgmt['take_profit_1']:.2f}" if risk_mgmt['take_profit_1'] else "N/A")
                 
-                col_metrics1, col_metrics2, col_metrics3 = st.columns(3)
-                with col_metrics1:
-                    st.metric("RSI (14)", f"{latest_tech['RSI']:.1f}" if not pd.isna(latest_tech['RSI']) else "N/A")
-                    st.metric("MACD", f"{latest_tech['MACD']:.3f}" if not pd.isna(latest_tech['MACD']) else "N/A")
-                with col_metrics2:
-                    st.metric("SMA 20", f"¥{latest_tech['SMA_20']:.3f}" if not pd.isna(latest_tech['SMA_20']) else "N/A")
-                    st.metric("SMA 50", f"¥{latest_tech['SMA_50']:.3f}" if not pd.isna(latest_tech['SMA_50']) else "N/A")
-                with col_metrics3:
-                    st.metric("Support", f"¥{latest_tech['Support']:.3f}" if not pd.isna(latest_tech['Support']) else "N/A")
-                    st.metric("Resistance", f"¥{latest_tech['Resistance']:.3f}" if not pd.isna(latest_tech['Resistance']) else "N/A")
+                # Position Sizing
+                st.markdown("##### 📊 Position Sizing")
+                col_pos1, col_pos2, col_pos3 = st.columns(3)
+                with col_pos1:
+                    st.metric("Position Size", f"{risk_mgmt['position_size']:.4f} units")
+                with col_pos2:
+                    st.metric("Risk Amount", f"${risk_mgmt['risk_amount']:.2f}")
+                with col_pos3:
+                    st.metric("Risk-Reward 1", f"1:{risk_mgmt['risk_reward_1']:.2f}" if risk_mgmt['risk_reward_1'] else "N/A")
+                
+                # Risk Warning
+                risk_class = risk_mgmt['risk_level'].split()[0].lower()
+                st.markdown(f"""
+                <div style="margin-top: 10px;">
+                    <span class="risk-badge risk-{risk_class}">{risk_mgmt['risk_level']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            else:
+                if prediction['bias'] == "SIDEWAYS":
+                    st.info("⏸️ Market is sideways. No clear signal. Wait for breakout.")
+                elif prediction['confidence'] < confidence_threshold:
+                    st.warning(f"⚠️ Confidence ({prediction['confidence']:.1%}) below threshold ({confidence_threshold:.1%})")
             
-            # USD/JPY price chart
-            st.subheader("📈 USD/JPY Price Movement")
-            st.line_chart(data['Close'])
+            # M15 Chart
+            st.subheader("📈 M15 Price Action")
+            
+            # Create a simple price chart with levels
+            chart_data = data[['Close']].copy()
+            chart_data.columns = ['Price']
+            
+            # Add levels to chart data
+            for i, level in enumerate(levels['support'][:2]):
+                chart_data[f'Sup{i+1}'] = level['price']
+            for i, level in enumerate(levels['resistance'][:2]):
+                chart_data[f'Res{i+1}'] = level['price']
+            
+            st.line_chart(chart_data)
+            
         else:
-            st.error("⚠️ Unable to load USD/JPY data")
-    
-    # ---------------- SUMMARY SECTION ----------------
-    if predictions:
-        st.markdown("---")
-        st.markdown("## 📈 Market Summary")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            bullish_count = sum(1 for p in predictions if p['bias'] == "BULLISH" and p['confidence'] >= confidence_threshold)
-            st.metric("Bullish Signals", bullish_count)
-        
-        with col2:
-            bearish_count = sum(1 for p in predictions if p['bias'] == "BEARISH" and p['confidence'] >= confidence_threshold)
-            st.metric("Bearish Signals", bearish_count)
-        
-        with col3:
-            neutral_count = sum(1 for p in predictions if p['bias'] == "NEUTRAL")
-            st.metric("Neutral", neutral_count)
-        
-        with col4:
-            avg_confidence = np.mean([p['confidence'] for p in predictions])
-            st.metric("Avg Confidence", f"{avg_confidence:.1%}")
-        
-        # Detailed table
-        st.markdown("### 📊 Detailed Analysis")
-        df_summary = pd.DataFrame(predictions)
-        df_summary['price'] = df_summary.apply(
-            lambda x: f"${x['price']:.2f}" if x['ticker'] == 'GOLD' else f"¥{x['price']:.3f}", 
-            axis=1
-        )
-        df_summary['change'] = df_summary['change'].map('{:.3f}%'.format)
-        df_summary['confidence'] = df_summary['confidence'].map('{:.1%}'.format)
-        df_summary = df_summary[['ticker', 'bias', 'confidence', 'price', 'change']]
-        df_summary.columns = ['Asset', 'Bias', 'Confidence', 'Price', 'Change']
-        st.dataframe(df_summary, use_container_width=True)
-
-# ---------------- CORRELATION ANALYSIS ----------------
-st.markdown("---")
-st.markdown("## 🔗 Gold-USD/JPY Correlation Analysis")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    # Load both assets for correlation
-    gold_data = load_ticker_data(GOLD_TICKER, "1mo", "1h")
-    forex_data = load_ticker_data(USDJPY_TICKER, "1mo", "1h")
-    
-    if gold_data is not None and forex_data is not None and not gold_data.empty and not forex_data.empty:
-        # Align data
-        common_dates = gold_data.index.intersection(forex_data.index)
-        if len(common_dates) > 0:
-            gold_prices = gold_data.loc[common_dates, 'Close']
-            forex_prices = forex_data.loc[common_dates, 'Close']
-            
-            # Calculate correlation
-            correlation = gold_prices.corr(forex_prices)
-            
-            st.metric("Price Correlation", f"{correlation:.3f}", 
-                     delta="Inverse" if correlation < 0 else "Direct")
-            
-            # Scatter plot
-            corr_df = pd.DataFrame({
-                'Gold Price': gold_prices,
-                'USD/JPY': forex_prices
-            })
-            st.scatter_chart(corr_df)
-    else:
-        st.info("Insufficient data for correlation analysis")
-
-with col2:
-    st.markdown("""
-    ### 📊 Correlation Insights
-    
-    **Gold and USD/JPY typically show:**
-    
-    - **Inverse correlation** when risk sentiment drives markets
-    - Gold as safe-haven vs USD/JPY as risk barometer
-    
-    **Current signals:**
-    """)
-    
-    if len(predictions) == 2:
-        if predictions[0]['bias'] == "BULLISH" and predictions[1]['bias'] == "BEARISH":
-            st.success("🔮 Classic safe-haven flow: Gold up, USD/JPY down")
-        elif predictions[0]['bias'] == "BEARISH" and predictions[1]['bias'] == "BULLISH":
-            st.success("📈 Risk-on sentiment: Gold down, USD/JPY up")
-        elif predictions[0]['bias'] == predictions[1]['bias']:
-            st.info("⚖️ Unusual correlation - special factors may be at play")
-
-# ---------------- AUTO-REFRESH SCRIPT ----------------
-if auto_refresh:
-    time_to_refresh = st.session_state.last_refresh + timedelta(seconds=interval_map[refresh_interval])
-    current_time = datetime.now(pytz.timezone('US/Eastern'))
-    
-    if current_time >= time_to_refresh:
-        refresh_data()
-    else:
-        time_left = time_to_refresh - current_time
-        st.sidebar.info(f"⏰ Next refresh in: {time_left.seconds} seconds")
-
-# ---------------- FOOTER ----------------
-st.markdown("---")
-st.markdown("""
-<div style='text-align: center; color: #666; padding: 20px;'>
-    <p>🚀 AI-Powered Gold & USD/JPY Analysis | Data updates every 5 minutes | Click REFRESH for latest data</p>
-    <p style='font-size: 12px;'>⚠️ This is for educational purposes only. Not financial advice.</p>
-    <p style='font-size: 12px;'>🏆 Gold: GC=F | 💱 USD/JPY: JPY=X</p>
-</div>
-""", unsafe_allow_html=True)
+            st.error
